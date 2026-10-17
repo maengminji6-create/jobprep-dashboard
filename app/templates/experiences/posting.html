@@ -123,7 +123,8 @@
     {% for h in history %}
     <li>
       <a href="{{ url_for('experiences.posting_detail', pa_id=h.id) }}"><b>{{ h.company or h.title[:40] }}</b>
-        <span class="muted">{{ h.result.get('main_role_name', '') }} · 매칭 {{ h.result.get('coverage', 0) }}% · {{ h.created_at|localtime('%m/%d %H:%M') }}</span></a>
+        <span class="muted">{{ h.result.get('main_role_name', '') }} · 매칭 {{ h.result.get('coverage', 0) }}% · {{ h.created_at|localtime('%m/%d %H:%M') }}</span>
+        {% if h.memo %}<span class="memo">📝 {{ h.memo[:50] }}</span>{% endif %}</a>
       <form method="post" action="{{ url_for('experiences.posting_save', pa_id=h.id) }}" class="inline">{{ csrf() }}
         <input type="hidden" name="next" value="{{ url_for('experiences.posting') }}#history">
         <button class="btn secondary sm" type="submit">★ 저장</button></form>

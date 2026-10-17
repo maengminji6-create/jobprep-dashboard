@@ -236,6 +236,10 @@ def _sections(text: str) -> tuple[str, str]:
     return "\n".join(required), "\n".join(preferred)
 
 
+# 거의 모든 공고 제목에 들어가 키워드로 의미가 없는 단어(예: '신입 채용')
+DICT_IGNORE = {"채용"}
+
+
 def _dict_words(text: str) -> set[str]:
     low = text.lower()
     words = set()
@@ -243,7 +247,7 @@ def _dict_words(text: str) -> set[str]:
         words.update(kw for kw in role["keywords"] if kw.lower() in low)
     for s in COMMON_SIGNALS.values():
         words.update(w for w in s["words"] if w.lower() in low)
-    return words
+    return words - DICT_IGNORE
 
 
 def _frequent_tokens(text: str, n: int = 15) -> list[str]:
