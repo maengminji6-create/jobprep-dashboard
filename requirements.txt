@@ -11,5 +11,6 @@ pypdf>=4.0
 openpyxl>=3.1
 xlrd>=2.0
 openai>=3.31
+Pillow>=11.0
 gunicorn>=22.0
 psycopg[binary]>=3.1

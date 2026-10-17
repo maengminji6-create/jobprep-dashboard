@@ -27,6 +27,7 @@ TOKEN_STOP = set("및 등 경우 관련 업무 담당 담당자 가능 우대 �
 # 공고 본문을 섹션으로 나누는 제목 패턴
 SECTION_PATTERNS = [
     ("업무", re.compile(r"^\s*[\[【■●◆▶•·\-\d\.\)]*\s*(주요\s*업무|담당\s*업무|업무\s*내용|하는\s*일|직무\s*내용|"
+                       r"모집\s*(분야|부문|직무|직군)|채용\s*(분야|부문|직무|직군)|"
                        r"job\s*description|responsibilit\w*|what\s+you.?ll\s+do)", re.IGNORECASE)),
     ("자격요건", re.compile(r"^\s*[\[【■●◆▶•·\-\d\.\)]*\s*(자격\s*요건|지원\s*자격|필수\s*(요건|사항|조건)?|"
                          r"requirements?|qualifications?)", re.IGNORECASE)),
@@ -82,7 +83,19 @@ END_MARKERS = re.compile(
     r"BEST 이야기|기업\s*리뷰|연봉\s*정보 보기|이 기업의 다른 공고)")
 # 한 줄씩 빼는 버튼·라벨
 JUNK_LINE = re.compile(r"^(\[?공고\s*상세\]?|공유하기|스크랩|지원하기|홈페이지 지원|목록|이전|다음|top|로그인|회원가입|"
-                       r"더보기|접기|닫기|댓글|조회|d-\d+)$", re.IGNORECASE)
+                       r"더보기|접기|닫기|댓글|조회|d-\d+|my 이력 관리|무료 공고\s*등록|관심 유저 통계 보기)$", re.IGNORECASE)
+# 공고 본문 다음에 붙는 사이트 위젯(합격 자소서·스터디·추천 공고 목록·푸터). 본문 내용이 하나라도 나온 뒤면 그 아래는 통째로 버림
+HARD_END = re.compile(
+    r"(지원서 파일 없음|관심 직무 현황|함께 준비할 스터디|스터디원을? (모집|찾)|합격한 지원자|합격자가 .{0,20}작성한|"
+    r"실제 자기소개서|자기소개서 사례|^조회\s*[\d,]+$|^댓글\s*\d+$|사업자\s*등록\s*번호|copyright\s*©|"
+    r"^•\s*(링커리어 소개|이용약관|광고 및 제휴))", re.IGNORECASE)
+# 다른 지원자의 스펙 한 줄(학교 / 전공 / 학점 / 어학) — 공고 내용이 아니므로 뺌
+SPEC_LINE = re.compile(r"(학점\s*[\d.]+\s*/\s*[\d.]+|토익\s*:?\s*\d{3}|오픽\s*:?\s*I[MHL]|토스\s*\d{3}\s*/)")
+# '상세내용' 위쪽 요약 박스에서 살릴 항목(링크에 실제로 적힌 값만)
+SUMMARY_LABELS = {"기업형태": "기업형태", "접수기간": "접수", "채용형태": "채용형태", "모집직무": "모집직무", "근무지역": "지역",
+                  "학력": "학력", "경력": "경력"}
+SUMMARY_STOP = set(SUMMARY_LABELS) | {"홈페이지", "기업명", "직무", "담당자", "모집인원"}
+BRACKET_HEAD = re.compile(r"^[\[【<]\s*[^\]】>]{1,30}\s*[\]】>]$")
 
 
 def _lines(node) -> str:
@@ -117,30 +130,75 @@ def has_body(text: str) -> bool:
     return any(_is_section_head(ln.strip()) for ln in (text or "").splitlines())
 
 
+def _summary(pre: list[str]) -> list[str]:
+    """'상세내용' 위 요약 박스(기업형태·접수기간·채용형태·근무지역…)에서 라벨 다음 값만 뽑아 '공고 요약'으로."""
+    out, i = [], 0
+    while i < len(pre):
+        label = SUMMARY_LABELS.get(pre[i].replace(" ", ""))
+        if not label:
+            i += 1
+            continue
+        vals, j = [], i + 1
+        while j < len(pre) and pre[j].replace(" ", "") not in SUMMARY_STOP and len(vals) < 3:
+            if not JUNK_LINE.match(pre[j]) and not pre[j].startswith("http") and "통계" not in pre[j]:
+                vals.append(re.sub(r"^(시작일|마감일)\s*", "", pre[j]))
+            j += 1
+        if vals:
+            out.append(f"{label} · {' ~ '.join(vals) if label == '접수' else ', '.join(vals)}")
+        i = j
+    return ["공고 요약", *out] if out else []
+
+
+def _is_head(ln: str) -> bool:
+    """내용 없는 제목 판별용. '- 급여조건 : 기본급'처럼 글머리·값이 있는 줄은 내용으로 봄."""
+    if re.match(r"^\s*[-•·*]", ln) or ":" in ln:
+        return False
+    return bool(BRACKET_HEAD.match(ln)) or (len(ln) <= 40 and any(pat.match(ln) for _n, pat in SECTION_PATTERNS))
+
+
+def _drop_empty_heads(lines: list[str]) -> list[str]:
+    """내용 없이 제목만 남은 줄([채용공고] 다음이 바로 다른 제목이거나 끝)은 뺌."""
+    out = []
+    for i, ln in enumerate(lines):
+        nxt = lines[i + 1] if i + 1 < len(lines) else None
+        if _is_head(ln) and (nxt is None or _is_head(nxt)) and not (nxt and ln == "공고 요약"):
+            continue
+        out.append(ln)
+    return out
+
+
 def clean_posting_text(text: str) -> str:
     """사이트 UI 문구를 걷어 내고 공고 본문만 남깁니다. 붙여넣은 글·예전에 저장한 공고에도 씁니다.
 
-    - '상세내용' 같은 표시가 있으면 그 아래부터 읽음(위쪽은 사이트 메뉴·요약 박스)
-    - 본문(업무·자격요건·우대사항 제목)이 나온 뒤 '신고하기·스크랩한 사용자' 같은 사이트 UI가 나오면 그 아래는 버림
-    - 본문 전에 나오는 그런 문구, 버튼 라벨, 숫자·괄호만 있는 줄은 한 줄씩 뺌
+    - '상세내용' 같은 표시가 있으면 그 아래부터 읽음(위쪽 요약 박스는 '공고 요약' 몇 줄로만 살림)
+    - 본문(업무·모집분야·자격요건·우대사항 제목)이 나온 뒤 '신고하기·스크랩한 사용자' 같은 사이트 UI가 나오면 그 아래는 버림
+    - 합격 자소서·스터디 모집·추천 공고(조회·댓글 수)·푸터는 본문 내용이 하나라도 나온 뒤면 그 아래를 통째로 버림
+    - 다른 지원자의 스펙 줄, 버튼 라벨, 숫자·괄호만 있는 줄, 내용 없는 제목은 한 줄씩 뺌
     """
     lines = [re.sub(r"[ \t ​]+", " ", ln).strip() for ln in (text or "").splitlines()]
     lines = [ln for ln in lines if ln]
     start = next((i + 1 for i, ln in enumerate(lines) if START_MARKER.match(ln)), 0)
+    summary = []
     if start and any(_is_section_head(ln) for ln in lines[start:]):
+        summary = _summary(lines[:start - 1])
         lines = lines[start:]
     out, body_started = [], False
     for ln in lines:
         if _is_section_head(ln):
             body_started = True
+        if HARD_END.search(ln):
+            if out:
+                break
+            continue
         if END_MARKERS.search(ln):
             if body_started:
                 break  # 본문 뒤의 사이트 UI 는 통째로 버림
             continue
-        if JUNK_LINE.match(ln) or BROWSER_NOTICE.search(ln) or not re.search(r"[가-힣A-Za-z]{2,}", ln):
+        if (JUNK_LINE.match(ln) or BROWSER_NOTICE.search(ln) or SPEC_LINE.search(ln)
+                or not re.search(r"[가-힣A-Za-z]{2,}", ln)):
             continue
         out.append(ln)
-    return "\n".join(out)
+    return "\n".join(_drop_empty_heads(summary + out))
 
 
 def _main_text(soup) -> str:
@@ -161,10 +219,18 @@ def _main_text(soup) -> str:
 
 def fetch_posting(url: str) -> tuple[str, str]:
     """(페이지 제목, 공고 본문 텍스트)를 돌려줍니다."""
+    page = fetch_posting_full(url)
+    return page["title"], page["text"]
+
+
+def fetch_posting_full(url: str) -> dict:
+    """{"title", "text", "images"} — images 는 본문 이미지 주소(이미지로 된 공고를 AI로 읽을 때 사용)."""
+    from .posting_images import collect_image_urls
     resp = _get(url)
     soup = BeautifulSoup(resp.content, "html.parser")
     title = (soup.title.get_text(strip=True) if soup.title else "")[:300]
     text = _main_text(soup)
+    images = collect_image_urls(soup, resp.url)
     # 본문이 같은 사이트의 iframe 안에 있는 공고(예: 상세 내용 별도 페이지)는 그 페이지 1개만 더 읽음
     if len(text) < 300:
         host = urlparse(resp.url).hostname
@@ -174,12 +240,13 @@ def fetch_posting(url: str) -> tuple[str, str]:
                 try:
                     inner = BeautifulSoup(_get(src).content, "html.parser")
                     inner_text = _main_text(inner)
+                    images += [u for u in collect_image_urls(inner, src) if u not in images]
                     if len(inner_text) > len(text):
                         text = inner_text
                 except PostingFetchError:
                     pass
                 break
-    return title, clean_posting_text(text)[:30000]
+    return {"title": title, "text": clean_posting_text(text)[:30000], "images": images}
 
 
 # ── 공고 구조 ───────────────────────────────────────────────────────
@@ -240,14 +307,19 @@ def _sections(text: str) -> tuple[str, str]:
 DICT_IGNORE = {"채용"}
 
 
+ANALYSIS_VERSION = 3  # 매칭 규칙이 바뀌면 올림 → 예전에 저장한 분석은 열 때 새 규칙으로 다시 분석
+
+# 공고 키워드로 인정하는 단어: 직무 사전에서 가중치 2 이상(핵심 업무 용어) + 외국어·자격증·툴.
+# '서류·전략·홍보·소통'처럼 어느 공고에나 나오는 가중치 1 단어와 '해외·글로벌' 같은 막연한 단어는 빼서 억지 매칭을 막음.
+STRONG_WORDS = sorted(
+    {kw for r in TRADE_ROLES for kw, w in r["keywords"].items() if w >= 2}
+    | {w for code, sig in COMMON_SIGNALS.items() if code in ("language", "certificate", "tool") for w in sig["words"]},
+    key=len, reverse=True)
+
+
 def _dict_words(text: str) -> set[str]:
     low = text.lower()
-    words = set()
-    for role in TRADE_ROLES:
-        words.update(kw for kw in role["keywords"] if kw.lower() in low)
-    for s in COMMON_SIGNALS.values():
-        words.update(w for w in s["words"] if w.lower() in low)
-    return words - DICT_IGNORE
+    return {w for w in STRONG_WORDS if w.lower() in low} - DICT_IGNORE
 
 
 def _frequent_tokens(text: str, n: int = 15) -> list[str]:
@@ -306,14 +378,17 @@ def analyze_posting(posting_text: str, analyses: list[dict], experiences: dict, 
         exp_text = exp.full_text.lower()
         hit_req = sorted(w for w in req_words if w.lower() in exp_text)
         hit_pref = sorted(w for w in pref_words if w.lower() in exp_text)
-        dict_hits = {w.lower() for w in hit_req + hit_pref}
-        hit_freq = [t for t in freq if t.lower() in exp_text and t.lower() not in dict_hits][:5]
         covered.update(hit_req, hit_pref)
-        if not (hit_req or hit_pref or hit_freq):
-            continue  # 공고와 겹치는 단어가 하나도 없으면 추천하지 않음
-        score = len(hit_req) * 12 + len(hit_pref) * 8 + len(hit_freq) * 4 + a["roles"][main_role]["score"] * 0.35 \
-            + max(a["usage"].values()) * 0.1
-        points = hit_req + hit_pref + hit_freq
+        fit = a["roles"][main_role]["score"]
+        # 추천 기준: 공고의 자격요건·우대사항 키워드를 실제로 1개 이상 증명하고,
+        # 2개 이상 겹치거나 공고 직무 적합도가 30 이상일 때만(단어 하나 우연히 겹친 경험은 제외)
+        if not (hit_req or hit_pref) or (len(hit_req) + len(hit_pref) < 2 and fit < 30):
+            continue
+        score = len(hit_req) * 14 + len(hit_pref) * 10 + fit * 0.4 + max(a["usage"].values()) * 0.1
+        if score < 30:
+            continue
+        hit_freq = []
+        points = hit_req + hit_pref
         recs.append({
             "id": a["id"], "title": a["title"], "category": a["category"], "score": min(100, round(score)),
             "hit_required": hit_req, "hit_preferred": hit_pref, "hit_tokens": hit_freq,
@@ -333,16 +408,21 @@ def analyze_posting(posting_text: str, analyses: list[dict], experiences: dict, 
         "coverage": round(len(covered & all_words) / len(all_words) * 100) if all_words else 0,
         "strength_matches": _strength_matches(strengths or [], posting_lines),
         "cert_matches": _cert_matches(certs or [], posting_text, main_role),
-        "highlight": sorted(all_words | set(freq[:8]), key=len, reverse=True),
+        "highlight": sorted({w for r in recs[:6] for w in r["hit_required"] + r["hit_preferred"]}, key=len, reverse=True),
+        "version": ANALYSIS_VERSION,
     }
 
 
 def _strength_matches(strengths: list[dict], posting_lines: list[str]) -> list[dict]:
-    """공고가 원하는 성향(문장 속 단서 단어)과 내 강점이 맞닿는 곳. strengths 는 link_strengths() 결과."""
-    from ..strengths.services import _clues
+    """공고가 그 성향을 '요구한다'고 분명히 적은 문장과 내 강점을 연결합니다. strengths 는 link_strengths() 결과.
+    - 공고 쪽 단서는 강점별 요구 표현(posting_signals: 꼼꼼·협업·주도 등)만 사용
+    - 그 강점이 실제로 드러난 내 경험이 하나도 없으면 연결하지 않음(근거 없는 강조 방지)"""
+    from ..strengths.services import posting_signals
     out = []
     for s in strengths:
-        clues = _clues(s["name"])
+        if not s.get("matches"):
+            continue
+        clues = posting_signals(s["name"])
         lines = [ln for ln in posting_lines if any(c in ln for c in clues)][:2]
         if not lines:
             continue

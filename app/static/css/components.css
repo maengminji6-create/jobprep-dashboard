@@ -254,6 +254,27 @@ table.pcompare .is-best { background: #fdf5e2; }
 .pc-rec { font-size: .82rem; margin-bottom: 6px; }
 .pc-rec span { display: block; margin-bottom: 2px; }
 
+/* ── 이미지에서 읽은 공고 ─────────────────────────────────── */
+.vision-note { font-size: .76rem; font-weight: 700; letter-spacing: .04em; color: var(--tone-600); margin: 0 0 8px; }
+.vision-title { font-weight: 700; color: var(--tone-700); margin: 0 0 10px; }
+.pos-card { border: 1px solid var(--border); border-radius: 18px; background: #fff; padding: 14px 16px; margin-bottom: 12px; }
+.pos-card.common { background: var(--tone-25); }
+.pos-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.pos-head b { font-size: 1rem; color: var(--tone-700); }
+.pos-div { font-size: .74rem; font-weight: 700; padding: 3px 10px; border-radius: 999px; background: #efe6d4; color: #6e4a0f; }
+.pos-cols { display: grid; gap: 10px; }
+.pos-col h5 { margin: 0 0 4px; font-size: .74rem; letter-spacing: .06em; }
+.pos-col ul { margin: 0; padding-left: 16px; font-size: .86rem; line-height: 1.65; }
+.pos-duties h5 { color: #6f6350; }
+.pos-requirements h5 { color: #7a4a0c; }
+.pos-preferred h5 { color: #b86b14; }
+.pos-preferred { border-left: 3px solid var(--tone-200); padding-left: 10px; }
+.vision-process { font-size: .84rem; color: #5d523f; margin: 6px 0; }
+.vision-missing { border: 1px dashed var(--tone-300); background: #fffaf0; border-radius: 16px; padding: 12px 14px; margin-bottom: 12px;
+  font-size: .86rem; }
+.vision-missing p { margin: 0 0 8px; }
+.orig-images img { display: block; width: 100%; border-radius: 12px; margin-top: 8px; border: 1px solid var(--border); }
+
 /* ── 자소서 보관함 ───────────────────────────────────────── */
 .chip-link { display: inline-block; padding: 8px 15px; border-radius: 999px; border: 1px solid var(--border); background: #fff;
   color: #6f6350; font-size: .86rem; }

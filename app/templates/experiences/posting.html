@@ -37,7 +37,7 @@
 <section class="block reveal">
   <div class="block-head"><div class="title"><span class="num">01</span><div><h2>공고 넣기</h2>
     <p>관심 공고를 넣으면 나와 얼마나 맞는지 바로 스크리닝해요. 마음에 드는 공고만 ★ 저장하세요.</p></div></div></div>
-  <form class="card" method="post" action="{{ url_for('experiences.posting') }}">
+  <form class="card" method="post" action="{{ url_for('experiences.posting') }}" enctype="multipart/form-data">
     {{ csrf() }}
     <div class="row">
       <div class="field" style="flex:3 1 300px"><label>채용공고 링크</label>
@@ -48,6 +48,11 @@
       <summary>링크가 안 열리면 공고 내용을 붙여 넣기</summary>
       <p class="muted" style="font-size:.84rem">로그인이 필요하거나 앱 전용인 공고는 링크로 읽을 수 없어요. 공고 본문(담당업무·자격요건·우대사항)을 복사해 넣으면 이 내용으로 분석해요.</p>
       <textarea name="posting_text" style="min-height:160px">{{ form.posting_text if form else '' }}</textarea>
+    </details>
+    <details class="box" style="margin-top:8px">
+      <summary>공고가 이미지라면 캡처 이미지 올리기</summary>
+      <p class="muted" style="font-size:.84rem">링크 속 공고 이미지는 자동으로 읽어요. 그래도 빠진 내용이 있거나 앱·PDF 공고라면 화면을 캡처해 올려 주세요(PNG·JPG, 최대 6장). 이미지 읽기에는 OpenAI 키가 필요해요.</p>
+      <input type="file" name="images" accept=".png,.jpg,.jpeg,.webp" multiple>
     </details>
     <div class="row" style="margin-top:12px;align-items:center;gap:14px">
       <button class="btn" type="submit" data-busy="공고를 읽고 분석하는 중…">매칭 분석하기</button>
@@ -192,12 +197,59 @@
     <article class="card posting-doc">
       <div class="doc-top"><h3>공고 원문</h3>
         <span class="hl-legend"><mark class="hl-exp">내 경험</mark><mark class="hl-str">내 강점</mark></span></div>
+      {% if vision and vision.positions %}
+      <div class="vision">
+        <p class="vision-note">🖼 이미지에서 읽은 공고{% if vision.period %} · 접수 {{ vision.period }}{% endif %}</p>
+        {% if vision.title %}<p class="vision-title">{{ vision.title }}</p>{% endif %}
+        {% for p in vision.positions %}
+        <article class="pos-card">
+          <div class="pos-head">
+            {% if p.division %}<span class="pos-div">{{ p.division }}</span>{% endif %}
+            <b>{{ p.name or '모집 직무' }}</b>
+            {% if p.type %}<span class="badge">{{ p.type }}</span>{% endif %}
+          </div>
+          <div class="pos-cols">
+            {% for label, key in [('직무내용', 'duties'), ('자격요건', 'requirements'), ('우대사항', 'preferred')] %}
+            {% if p[key] %}<div class="pos-col pos-{{ key }}"><h5>{{ label }}</h5>
+              <ul>{% for it in p[key] %}<li>{{ it|highlight(exp_words, str_words) }}</li>{% endfor %}</ul></div>{% endif %}
+            {% endfor %}
+          </div>
+        </article>
+        {% endfor %}
+        {% if vision.common and (vision.common.requirements or vision.common.preferred) %}
+        <article class="pos-card common">
+          <div class="pos-head"><b>모든 직무 공통</b></div>
+          <div class="pos-cols">
+            {% if vision.common.requirements %}<div class="pos-col pos-requirements"><h5>지원자격</h5><ul>{% for it in vision.common.requirements %}<li>{{ it|highlight(exp_words, str_words) }}</li>{% endfor %}</ul></div>{% endif %}
+            {% if vision.common.preferred %}<div class="pos-col pos-preferred"><h5>우대사항</h5><ul>{% for it in vision.common.preferred %}<li>{{ it|highlight(exp_words, str_words) }}</li>{% endfor %}</ul></div>{% endif %}
+          </div>
+        </article>
+        {% endif %}
+        {% if vision.process %}<p class="vision-process"><b>전형절차</b> {{ vision.process|join(' → ') }}</p>{% endif %}
+        {% if vision.other %}<details class="cmt"><summary>그 밖의 안내 {{ vision.other|length }}줄</summary>
+          <div class="doc-body">{% for o in vision.other %}<p class="doc-l">{{ o }}</p>{% endfor %}</div></details>{% endif %}
+      </div>
+      {% elif analysis.images or analysis.url %}
+      <div class="vision-missing">
+        {% if analysis.images %}<p>이 공고에는 본문 이미지가 {{ analysis.images|length }}장 있어요. 이미지 속 직무·자격·우대사항까지 반영하려면 읽어 오세요.</p>
+        {% else %}<p>지금은 링크의 글만 분석했어요. 직무·자격·우대사항이 이미지로 들어 있는 공고라면 링크에서 본문 이미지를 찾아 읽어 올 수 있어요.</p>{% endif %}
+        {% if ai_enabled %}<form method="post" action="{{ url_for('experiences.posting_read_images', pa_id=analysis.id) }}" data-ai-form>{{ csrf() }}
+          <button class="btn sm" type="submit">🖼 이미지 속 공고 읽기</button></form>
+        {% else %}<small class="muted">.env 에 OPENAI_API_KEY 를 넣으면 읽을 수 있어요.</small>{% endif %}
+      </div>
+      {% endif %}
+      {% if doc and vision and vision.positions %}<p class="vision-note" style="margin-top:16px">📄 페이지 글</p>{% endif %}
       <div class="doc-body">
         {% for ln in doc %}
           {% if ln.head %}<p class="doc-h kind-{{ ln.kind }}">{{ ln.text|highlight(exp_words, str_words) }}</p>
           {% else %}<p class="doc-l">{{ ln.text|highlight(exp_words, str_words) }}</p>{% endif %}
-        {% else %}<p class="muted">공고 본문이 비어 있어요.</p>{% endfor %}
+        {% else %}{% if not (vision and vision.positions) %}<p class="muted">공고 본문이 비어 있어요.</p>{% endif %}{% endfor %}
       </div>
+      {% if analysis.images %}
+      <details class="cmt orig-images"><summary>원본 이미지 {{ analysis.images|length }}장 보기</summary>
+        {% for u in analysis.images %}<img src="{{ u }}" alt="공고 이미지 {{ loop.index }}" loading="lazy" referrerpolicy="no-referrer">{% endfor %}
+      </details>
+      {% endif %}
     </article>
 
     <div class="match-panel">

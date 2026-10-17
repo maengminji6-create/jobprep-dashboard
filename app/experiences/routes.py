@@ -14,7 +14,8 @@ from .backup import MAX_FILE_BYTES, build_data, restore, save_snapshot, validate
 from .models import (CATEGORIES, Certificate, Experience, ExperienceUpload, PostingAnalysis, Snapshot,
                      TopExclusion)
 from .parser import allowed, extract_text, is_spreadsheet, parse_spreadsheet, split_experiences
-from .posting import PostingFetchError, analyze_posting, clean_posting_text, fetch_posting, has_body
+from .posting import (ANALYSIS_VERSION, PostingFetchError, analyze_posting, clean_posting_text, fetch_posting,
+                      fetch_posting_full, has_body)
 from .services import (certificate_from_item, excluded_ids, generate_comments, rule_comment, saved_comments,
                        upsert_certificate, upsert_experience)
 
@@ -529,18 +530,51 @@ def posting():
     if request.method == "GET":
         return render_template("experiences/posting.html", analysis=None, **ctx)
 
+    from .posting_images import UPLOAD_EXT, download_image, is_posting_sized, to_chunks, vision_to_text
     url = (request.form.get("url") or "").strip()
     pasted = (request.form.get("posting_text") or "").strip()
     company = (request.form.get("company") or "").strip()[:120]
-    title, text = "", clean_posting_text(pasted) if pasted else ""
+    title, text, image_urls, blobs = "", clean_posting_text(pasted) if pasted else "", [], []
+
+    # ① 직접 올린 공고 이미지(캡처)
+    for f in request.files.getlist("images")[:6]:
+        ext = f.filename.rsplit(".", 1)[-1].lower() if f and "." in (f.filename or "") else ""
+        if ext in UPLOAD_EXT:
+            data = f.read(8 * 1024 * 1024 + 1)
+            if len(data) <= 8 * 1024 * 1024:
+                blobs.append(data)
+    # ② 링크: 본문 글 + 본문 이미지
     if url and not pasted:
         try:
-            title, text = fetch_posting(url)
+            page = fetch_posting_full(url)
         except PostingFetchError as exc:
-            flash(str(exc), "error")
-            return render_template("experiences/posting.html", analysis=None, form=request.form, **ctx)
+            if not blobs:
+                flash(str(exc), "error")
+                return render_template("experiences/posting.html", analysis=None, form=request.form, **ctx)
+            page = {"title": "", "text": "", "images": []}
+        title, text = page["title"], page["text"]
+        for img_url in page["images"]:
+            if len(image_urls) >= 6:
+                break
+            data = download_image(img_url)
+            if data and is_posting_sized(data):
+                image_urls.append(img_url)
+                blobs.append(data)
+
+    # ③ 이미지 속 공고 읽기(AI). 실패해도 글로 읽은 내용으로 계속 진행
+    vision = {}
+    if blobs:
+        if ai_client.enabled():
+            try:
+                vision = ai_client.read_posting_images(to_chunks(blobs))
+                text = (text + "\n" + vision_to_text(vision)).strip()
+            except ai_client.AiError as exc:
+                flash(f"이미지 속 공고 내용은 읽지 못했어요: {exc}", "info")
+        else:
+            flash("이 공고는 중요한 내용이 이미지에 들어 있어요. 이미지까지 읽으려면 .env 에 OPENAI_API_KEY 를 넣어 주세요. "
+                  "지금은 글로 된 부분만 분석했어요.", "info")
     if len(text) < 80:
-        flash("공고 내용을 충분히 읽지 못했어요(로그인·앱 전용 페이지일 수 있음). 공고 본문을 복사해 붙여 넣어 주세요.",
+        flash("공고 내용을 충분히 읽지 못했어요(로그인·앱 전용 페이지일 수 있음). 공고 본문을 붙여 넣거나 공고 캡처 이미지를 올려 주세요.",
               "error")
         return render_template("experiences/posting.html", analysis=None, form=request.form, **ctx)
 
@@ -549,14 +583,68 @@ def posting():
         return redirect(url_for("experiences.index"))
     result = _analyze_text(text)
     from ..core.industries import detect_industry
-    pa = create_owned(PostingAnalysis, url=url, company=company, title=(title or company or "붙여넣은 공고")[:300],
+    company = company or (vision.get("company") or "")[:120]
+    title = title or vision.get("title") or company or "붙여넣은 공고"
+    pa = create_owned(PostingAnalysis, url=url, company=company, title=title[:300],
                       industry=detect_industry(f"{company} {title} {text}"), role_code=result.get("main_role", ""),
-                      is_saved=bool(request.form.get("save_now")),
+                      is_saved=bool(request.form.get("save_now")), images_json=json.dumps(image_urls),
+                      vision_json=json.dumps(vision, ensure_ascii=False) if vision else "",
                       posting_text=text[:30000], result_json=json.dumps(result, ensure_ascii=False))
     db.session.commit()
-    flash("공고를 분석했어요. 마음에 들면 '★ 공고 저장'을 눌러 보관하세요. 저장하지 않은 분석은 최근 조회 기록에만 남아요."
-          if not pa.is_saved else "공고를 분석해 저장했어요.", "success")
+    msg = "이미지 속 공고까지 읽어 분석했어요. " if vision else "공고를 분석했어요. "
+    flash(msg + ("마음에 들면 '★ 공고 저장'을 눌러 보관하세요. 저장하지 않은 분석은 최근 조회 기록에만 남아요."
+                 if not pa.is_saved else "저장한 공고에 넣었어요."), "success")
     return redirect(url_for("experiences.posting_detail", pa_id=pa.id))
+
+
+@bp.route("/posting/<int:pa_id>/read-images", methods=["POST"])
+@login_required
+def posting_read_images(pa_id):
+    """저장된 공고의 본문 이미지를 (다시) 읽어 분석에 반영."""
+    from .posting_images import VISION_MARK, download_image, is_posting_sized, to_chunks, vision_to_text
+    pa = get_owned_or_404(PostingAnalysis, pa_id)
+    if not ai_client.enabled():
+        flash("이미지 속 공고를 읽으려면 .env 에 OPENAI_API_KEY 를 넣고 서버를 다시 켜 주세요.", "info")
+        return redirect(url_for("experiences.posting_detail", pa_id=pa.id))
+    urls = pa.images
+    if not urls and pa.url:  # 이미지 읽기 기능 전에 저장한 공고: 링크를 다시 열어 본문 이미지 주소를 찾음
+        try:
+            urls = fetch_posting_full(pa.url)["images"]
+        except PostingFetchError as exc:
+            flash(str(exc), "error")
+            return redirect(url_for("experiences.posting_detail", pa_id=pa.id))
+    blobs, kept = [], []
+    for u in urls:
+        if len(blobs) >= 6:
+            break
+        d = download_image(u)
+        if d and is_posting_sized(d):
+            blobs.append(d)
+            kept.append(u)
+    pa.images_json = json.dumps(kept)
+    if not blobs:
+        db.session.commit()
+        flash("공고 이미지를 다시 받지 못했어요. 공고 캡처 이미지를 새로 올려 분석해 주세요.", "error")
+        return redirect(url_for("experiences.posting_detail", pa_id=pa.id))
+    try:
+        vision = ai_client.read_posting_images(to_chunks(blobs))
+    except ai_client.AiError as exc:
+        flash(str(exc), "error")
+        return redirect(url_for("experiences.posting_detail", pa_id=pa.id))
+    base = pa.posting_text.split(VISION_MARK)[0].strip()
+    pa.posting_text = (base + "\n" + vision_to_text(vision)).strip()[:30000]
+    pa.vision_json = json.dumps(vision, ensure_ascii=False)
+    pa.result_json = json.dumps(_analyze_text(pa.posting_text), ensure_ascii=False)
+    db.session.commit()
+    flash("이미지 속 공고 내용을 읽어 다시 분석했어요.", "success")
+    return redirect(url_for("experiences.posting_detail", pa_id=pa.id))
+
+
+def _clean_stored(text: str) -> str:
+    """저장된 공고 글 정리. 이미지에서 읽은 부분(VISION_MARK 아래)은 그대로 둠."""
+    from .posting_images import VISION_MARK
+    base, mark, vis = text.partition(VISION_MARK)
+    return (clean_posting_text(base) + ("\n" + mark + vis if mark else "")).strip()
 
 
 @bp.route("/posting/<int:pa_id>")
@@ -564,11 +652,14 @@ def posting():
 def posting_detail(pa_id):
     from .posting import doc_lines
     pa = get_owned_or_404(PostingAnalysis, pa_id)
-    cleaned = clean_posting_text(pa.posting_text)
+    cleaned = _clean_stored(pa.posting_text)
     # 예전 버전이 사이트 UI 문구까지 저장한 공고는 열 때 정리·재분석(정리 결과에 본문 제목이 있을 때만)
     if cleaned and cleaned != pa.posting_text and has_body(cleaned):
         pa.posting_text = cleaned
         pa.result_json = json.dumps(_analyze_text(cleaned), ensure_ascii=False)
+        db.session.commit()
+    elif pa.result.get("version") != ANALYSIS_VERSION:  # 예전 규칙으로 만든 분석은 새 규칙으로 다시 분석
+        pa.result_json = json.dumps(_analyze_text(pa.posting_text), ensure_ascii=False)
         db.session.commit()
     ctx = _postings()
     exps, certs, profile, _linked = _match_inputs()
@@ -576,10 +667,11 @@ def posting_detail(pa_id):
     r = pa.result
     # 형광펜: 노랑 = 내 경험과 겹치는 공고 단어, 초록 = 내 강점이 드러나는 단서 단어
     exp_words = sorted({w for rec in r.get("recommendations", [])
-                        for w in rec.get("hit_required", []) + rec.get("hit_preferred", []) + rec.get("hit_tokens", [])})
+                        for w in rec.get("hit_required", []) + rec.get("hit_preferred", [])})
     str_words = sorted({w for s in r.get("strength_matches", []) for w in s.get("words", [])})
+    from .posting_images import VISION_MARK
     return render_template("experiences/posting.html", analysis=pa, result=r, **ctx,
-                           doc=doc_lines(pa.posting_text), exp_words=exp_words, str_words=str_words,
+                           doc=doc_lines(pa.posting_text.split(VISION_MARK)[0]), vision=pa.vision, exp_words=exp_words, str_words=str_words,
                            exps={e.id: e for e in exps},
                            ai_enabled=ai_client.enabled(), ai=pa.ai, stale_ai=stale_ai,
                            has_strength=profile is not None)
@@ -590,7 +682,7 @@ def posting_detail(pa_id):
 def posting_reanalyze(pa_id):
     """저장해 둔 공고를 지금의 이력·강점·자격증으로 다시 매칭."""
     pa = get_owned_or_404(PostingAnalysis, pa_id)
-    cleaned = clean_posting_text(pa.posting_text)
+    cleaned = _clean_stored(pa.posting_text)
     if has_body(cleaned):
         pa.posting_text = cleaned
     pa.result_json = json.dumps(_analyze_text(pa.posting_text), ensure_ascii=False)

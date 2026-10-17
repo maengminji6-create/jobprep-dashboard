@@ -200,6 +200,89 @@ def link_strengths_ai(report_text: str, strength_names: list[str], exps: list, r
     return data, truncated
 
 
+# ── 이미지로 된 채용공고 읽기(비전) ─────────────────────────────────────
+
+_STR_LIST = {"type": "array", "items": {"type": "string"}}
+VISION_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "company": {"type": "string"},
+        "title": {"type": "string"},
+        "period": {"type": "string"},
+        "positions": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "division": {"type": "string"}, "name": {"type": "string"}, "type": {"type": "string"},
+                    "duties": _STR_LIST, "requirements": _STR_LIST, "preferred": _STR_LIST,
+                },
+                "required": ["division", "name", "type", "duties", "requirements", "preferred"],
+                "additionalProperties": False,
+            },
+        },
+        "common": {
+            "type": "object",
+            "properties": {"requirements": _STR_LIST, "preferred": _STR_LIST},
+            "required": ["requirements", "preferred"],
+            "additionalProperties": False,
+        },
+        "process": _STR_LIST,
+        "other": _STR_LIST,
+    },
+    "required": ["company", "title", "period", "positions", "common", "process", "other"],
+    "additionalProperties": False,
+}
+
+VISION_PROMPT = """당신은 채용공고 이미지를 정확히 옮겨 적는 도우미입니다.
+이미지(세로로 긴 공고를 순서대로 자른 조각일 수 있음)에 적힌 내용을 빠짐없이, 적힌 그대로 구조화합니다.
+
+원칙:
+- 이미지에 없는 내용은 절대 만들지 않습니다. 요약하거나 다르게 바꿔 쓰지 말고 문구를 그대로 옮깁니다.
+- 표(모집부문 / 구분 / 직무내용 / 자격요건)는 행마다 positions 하나로 만듭니다.
+  division=모집부문·본부·근무지, name=직무명, type=구분(신입·경력·인턴·채용연계형 등).
+- 자격요건 칸 안의 '우대사항' 아래 항목은 preferred 로, 나머지 자격요건은 requirements 로 나눕니다.
+- 모든 포지션에 공통인 지원자격·우대사항은 common 에 넣습니다.
+- 전형 절차는 process, 접수 기간은 period, 그 밖의 안내(근무조건·복리후생·제출서류 등)는 other 에 한 줄씩.
+- 조각끼리 겹치는 부분은 한 번만 적습니다. 읽을 수 없는 글자는 건너뜁니다."""
+
+
+def read_posting_images(chunks: list[str]) -> dict:
+    """chunks: data URL(이미지 조각) 목록 → 공고 구조(dict)."""
+    if not enabled():
+        raise AiError("이미지 속 공고를 읽으려면 OPENAI_API_KEY 가 필요해요.")
+    if not chunks:
+        raise AiError("읽을 공고 이미지가 없어요.")
+    content = [{"type": "text", "text": f"채용공고 이미지 조각 {len(chunks)}개입니다. 순서대로 이어서 읽어 주세요."}]
+    content += [{"type": "image_url", "image_url": {"url": c, "detail": "high"}} for c in chunks]
+    client = openai.OpenAI(api_key=api_key(), timeout=240.0)
+    try:
+        response = client.chat.completions.create(
+            model=current_app.config["AI_MODEL"],
+            max_completion_tokens=16000,
+            messages=[{"role": "system", "content": VISION_PROMPT}, {"role": "user", "content": content}],
+            response_format={"type": "json_schema",
+                             "json_schema": {"name": "posting_image", "strict": True, "schema": VISION_SCHEMA}},
+        )
+    except openai.AuthenticationError:
+        raise AiError("API 키가 올바르지 않아요. .env 의 OPENAI_API_KEY 를 확인해 주세요.")
+    except openai.BadRequestError as exc:
+        raise AiError(f"이미지를 읽지 못했어요(요청 오류: {exc.message}). 공고 글을 붙여 넣어 주세요.")
+    except openai.RateLimitError:
+        raise AiError("요청이 많거나 크레딧이 부족해요. 잠시 뒤 다시 시도하거나 platform.openai.com 의 Billing 을 확인해 주세요.")
+    except openai.APIStatusError as exc:
+        raise AiError(f"AI 서버 오류(HTTP {exc.status_code}). 잠시 뒤 다시 시도해 주세요.")
+    except openai.APIConnectionError:
+        raise AiError("AI 서버에 연결하지 못했어요. 인터넷 연결을 확인해 주세요.")
+    choice = response.choices[0]
+    if choice.message.refusal or choice.finish_reason == "length":
+        raise AiError("이미지 내용을 끝까지 읽지 못했어요. 공고 글을 붙여 넣어 주세요.")
+    try:
+        return json.loads(choice.message.content or "")
+    except ValueError:
+        raise AiError("AI 응답을 읽지 못했어요. 다시 시도해 주세요.")
+
+
 # ── 채용공고 × 내 경험·강점·자격증 매칭 리포트 ─────────────────────────
 
 POSTING_SCHEMA = {

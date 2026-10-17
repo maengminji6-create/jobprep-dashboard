@@ -73,6 +73,22 @@ class PostingAnalysis(UserOwnedMixin, TimestampMixin, db.Model):
     saved_at = db.Column(db.DateTime(timezone=True))
     industry = db.Column(db.String(30), default="etc")   # core/industries.py 코드(자동 분류, 직접 변경 가능)
     role_code = db.Column(db.String(40), default="")     # 직무 분류(기본은 분석이 찾은 직무)
+    images_json = db.Column(db.Text, default="[]")       # 공고 페이지의 본문 이미지 주소
+    vision_json = db.Column(db.Text, default="")         # AI가 이미지에서 읽은 공고 구조(모집부문·직무·자격·우대)
+
+    @property
+    def images(self) -> list[str]:
+        try:
+            return [u for u in json.loads(self.images_json or "[]") if isinstance(u, str)]
+        except ValueError:
+            return []
+
+    @property
+    def vision(self) -> dict:
+        try:
+            return json.loads(self.vision_json or "{}") or {}
+        except ValueError:
+            return {}
     ai_json = db.Column(db.Text, default="")       # AI 매칭 리포트(선택)
     ai_hash = db.Column(db.String(64), default="") # 리포트 당시 내 이력 지문(바뀌면 '다시 받기' 표시)
 
