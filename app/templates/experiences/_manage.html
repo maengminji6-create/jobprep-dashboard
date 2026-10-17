@@ -1,0 +1,127 @@
+{# 05 이력 추가·관리: 탭 4개 (경험 / 자격증 / 파일 / 내 데이터) #}
+<div class="card">
+  <div class="tabs" role="tablist">
+    <button type="button" role="tab" data-tab="exp" aria-selected="true">경험 추가·업데이트</button>
+    <button type="button" role="tab" data-tab="cert" aria-selected="false">자격증·어학</button>
+    <button type="button" role="tab" data-tab="file" aria-selected="false">파일 올리기</button>
+    <button type="button" role="tab" data-tab="data" aria-selected="false">저장·불러오기{% if snapshots %} · {{ snapshots|length }}{% endif %}</button>
+  </div>
+
+  <form class="tab-panel" id="tab-exp" role="tabpanel" method="post" action="{{ url_for('experiences.save') }}">
+    {{ csrf() }}
+    <div class="row">
+      <div class="field" style="flex:1 1 220px"><label for="target_id">어디에 넣을까요?</label>
+        <select id="target_id" name="target_id">
+          <option value="">＋ 새 경험으로 추가</option>
+          {% for e in exps %}<option value="{{ e.id }}">기존: {{ e.title }}</option>{% endfor %}
+        </select></div>
+      <div class="field" style="flex:2 1 260px"><label for="title">경험 이름</label>
+        <input id="title" type="text" name="title" placeholder="예: LG 호주 법인 인턴 (같은 이름이 있으면 그 경험에 합쳐져요)"></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>분류</label><select name="category"><option value="">자동/그대로</option>{% for c in categories %}<option>{{ c }}</option>{% endfor %}</select></div>
+      <div class="field"><label>기관·회사</label><input type="text" name="organization"></div>
+      <div class="field"><label>기간</label><input type="text" name="period" placeholder="2025.04 ~ 2025.08"></div>
+    </div>
+    <div class="grid grid-2" style="gap:12px">
+      <div class="field"><label>나의 역할</label><textarea name="role" placeholder="예: 장기재고 계산, S&OP 회의 자료 작성"></textarea></div>
+      <div class="field"><label>내용 (상황·행동·결과)</label><textarea name="content" placeholder="숫자 성과를 함께 적으면 분석이 정확해져요"></textarea></div>
+      <div class="field"><label>강점·성과</label><textarea name="strengths" placeholder="예: 재고 리포트 자동화로 작성 시간 50% 단축"></textarea></div>
+      <div class="field"><label>느낀점</label><textarea name="reflection"></textarea></div>
+    </div>
+    <div class="field"><label>키워드 (쉼표나 #으로 구분)</label><input type="text" name="keywords" placeholder="#꼼꼼함 #엑셀 #S&OP"></div>
+    <p class="muted" style="font-size:.8rem">기존 경험을 고르면 적은 칸만 덧붙여져요. 이미 있는 문장과 키워드는 중복으로 들어가지 않아요.</p>
+    <button class="btn" type="submit">저장하고 분석에 반영</button>
+  </form>
+
+  <form class="tab-panel" id="tab-cert" role="tabpanel" method="post" action="{{ url_for('experiences.add_certificate') }}" hidden>
+    {{ csrf() }}
+    <div class="row">
+      <div class="field" style="flex:2 1 240px"><label for="cert_name">자격증·시험 이름</label>
+        <input id="cert_name" type="text" name="cert_name" required placeholder="예: 국제무역사 1급, TOEIC, OPIc"></div>
+      <div class="field"><label>점수·등급</label><input type="text" name="cert_score" placeholder="예: 900, IH, 합격"></div>
+      <div class="field"><label>취득일</label><input type="text" name="cert_date" placeholder="2025.05"></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>발급 기관 (선택)</label><input type="text" name="cert_issuer" placeholder="예: 한국무역협회"></div>
+      <div class="field" style="flex:2 1 260px"><label>메모 (선택)</label><input type="text" name="cert_note" placeholder="예: 인코텀즈·신용장 실무 학습"></div>
+    </div>
+    <p class="muted" style="font-size:.8rem">같은 이름을 다시 넣으면 점수·취득일이 업데이트돼요. 자격증은 직무 적합도 계산에도 반영돼요.</p>
+    <button class="btn" type="submit">자격증 저장</button>
+  </form>
+
+  <form class="tab-panel" id="tab-file" role="tabpanel" method="post" action="{{ url_for('experiences.upload') }}" enctype="multipart/form-data" hidden>
+    {{ csrf() }}
+    <div class="formats"><span>XLSX</span><span>XLS</span><span>CSV</span><span>DOCX</span><span>PDF</span><span>TXT</span></div>
+    <p class="muted" style="font-size:.86rem">엑셀은 한 행이 경험 하나예요. <code>기관명</code> <code>나의 역할</code> <code>key-word</code> <code>강약점</code> <code>느낀점</code> 같은 머리글을 자동으로 찾아요.
+      같은 이름의 경험은 새로 만들지 않고 업데이트해요. 파일은 직접 올렸을 때만 읽어요.</p>
+    <div class="row">
+      <div class="field" style="flex:1 1 320px"><input type="file" name="file" accept=".xlsx,.xlsm,.xls,.csv,.docx,.pdf,.txt,.md" required></div>
+      <div class="field" style="flex:0 0 auto"><button class="btn" type="submit">업로드·분석</button></div>
+    </div>
+  </form>
+
+  <div class="tab-panel" id="tab-data" role="tabpanel" hidden>
+    <h3>저장본</h3>
+    <p class="muted" style="font-size:.84rem">지금의 경험·자격증·강점 결과지·자소서 보관함을 통째로 저장해 두고 언제든 다시 불러올 수 있어요. 불러오기 전 상태는 자동으로 저장돼요.
+      파일로 내려받으면 다른 컴퓨터나 배포한 사이트에서도 그대로 옮길 수 있어요.</p>
+    <form method="post" action="{{ url_for('experiences.snapshot_save') }}" class="row" style="margin-bottom:6px">
+      {{ csrf() }}
+      <div class="field" style="flex:1 1 260px"><label for="snap_name">저장본 이름</label>
+        <input id="snap_name" type="text" name="name" placeholder="예: 10월 해외영업 지원용"></div>
+      <div class="field" style="flex:0 0 auto"><button class="btn" type="submit">지금 상태 저장</button></div>
+      <div class="field" style="flex:0 0 auto"><a class="btn secondary" href="{{ url_for('experiences.export_current') }}">⤓ 파일로 내려받기</a></div>
+    </form>
+    {% if snapshots %}
+    <ul class="upload-list snapshot-list">
+      {% for s in snapshots %}
+      <li>
+        <div style="flex:1 1 240px"><b>{{ s.name }}</b>
+          <div class="muted" style="font-size:.78rem">{{ s.created_at|localtime }} · 경험 {{ s.exp_count }}개 · 자격증 {{ s.cert_count }}개{% if s.has_strength %} · 강점 결과지{% endif %}</div></div>
+        <form method="post" action="{{ url_for('experiences.snapshot_load', snap_id=s.id) }}" class="snap-load"
+              onsubmit="return confirm('이 저장본을 불러올까요? 지금 상태는 자동으로 저장본에 남아요.')">
+          {{ csrf() }}
+          <label><input type="checkbox" name="parts" value="experiences" checked> 이력·자격증</label>
+          {% if s.has_strength %}<label><input type="checkbox" name="parts" value="strength" checked> 강점</label>{% endif %}
+          {% if s.data.get('applications') %}<label><input type="checkbox" name="parts" value="applications" checked> 자소서 {{ s.data.applications|length }}개</label>{% endif %}
+          <button class="btn secondary sm" type="submit">불러오기</button>
+        </form>
+        <a class="btn ghost sm" href="{{ url_for('experiences.snapshot_download', snap_id=s.id) }}">⤓</a>
+        <form method="post" action="{{ url_for('experiences.snapshot_delete', snap_id=s.id) }}" class="inline" onsubmit="return confirm('이 저장본을 지울까요?')">
+          {{ csrf() }}<button class="btn ghost sm" type="submit">지우기</button></form>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}<p class="muted" style="font-size:.84rem">아직 저장본이 없어요.</p>{% endif %}
+    <form method="post" action="{{ url_for('experiences.snapshot_import') }}" enctype="multipart/form-data" class="row" style="margin:6px 0 22px">
+      {{ csrf() }}
+      <div class="field" style="flex:1 1 300px"><label>내려받아 둔 저장본 파일(.json) 올리기</label><input type="file" name="file" accept=".json,application/json" required></div>
+      <div class="field" style="flex:0 0 auto"><button class="btn secondary" type="submit">저장본으로 가져오기</button></div>
+    </form>
+
+    <h3>업로드 기록</h3>
+    <p class="muted" style="font-size:.84rem">지금 보이는 이력은 아래 파일과 직접 입력한 내용에서 왔어요. 앱은 PC의 파일을 스스로 읽지 않아요.</p>
+    {% if uploads %}
+    <ul class="upload-list">
+      {% for u in uploads %}
+      <li><b>{{ u.filename }}</b>
+        <span class="muted" style="font-size:.8rem">{{ u.created_at|localtime }} · 읽은 경험 {{ u.item_count }}개 · 지금 남은 경험 {{ upload_counts[u.id] }}개</span>
+        <form method="post" action="{{ url_for('experiences.delete_upload', upload_id=u.id) }}" class="inline" style="margin-left:auto"
+              onsubmit="return confirm('이 파일로 들어온 경험 {{ upload_counts[u.id] }}개를 지울까요? (나중에 덧붙인 내용도 함께 지워져요)')">
+          {{ csrf() }}<button class="btn ghost sm" type="submit">이 파일로 들어온 경험 지우기</button></form>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}<p class="muted">올린 파일이 없어요.</p>{% endif %}
+    <div class="danger-zone">
+      <h3>내 이력 전체 지우기</h3>
+      <p class="muted" style="font-size:.84rem">경험·자격증·업로드 기록·AI 코멘트·공고 분석이 모두 지워져요. 지우기 직전 상태는 저장본으로 자동 저장돼서, 필요하면 다시 불러올 수 있어요.</p>
+      <form method="post" action="{{ url_for('experiences.reset_all') }}" class="row">
+        {{ csrf() }}
+        <div class="field" style="flex:0 1 220px"><label for="confirm">확인을 위해 '삭제'라고 적어 주세요</label>
+          <input id="confirm" type="text" name="confirm" autocomplete="off"></div>
+        <div class="field" style="flex:0 0 auto"><button class="btn danger" type="submit">전체 지우기</button></div>
+      </form>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}지원 비교{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><span class="eyebrow">Compare</span>
+    <h1>지원 기록 비교</h1>
+    <p>기업 정보와 자소서를 나란히 놓고 비교해요. 같은 경험을 여러 곳에 쓴 경우도 표시해요.</p></div>
+  <a class="btn secondary" href="{{ url_for('applications.index') }}">← 보관함</a>
+</div>
+
+{% if shared %}
+<div class="card shared-box">
+  <b>여러 지원서에 같이 쓴 경험</b>
+  <div class="chips" style="margin-top:6px">{% for e in shared %}<span class="chip on">{{ e.title }}</span>{% endfor %}</div>
+  <p class="muted" style="font-size:.8rem;margin:6px 0 0">같은 경험이라도 회사의 인재상·직무에 맞게 강조점을 바꿨는지 확인해 보세요.</p>
+</div>
+{% endif %}
+
+<div class="compare-grid cols-{{ recs|length }}">
+  {% for r in recs %}
+  <div class="compare-col">
+    <div class="card compare-head">
+      <span class="badge">{{ r.status }}</span>
+      <h2><a href="{{ url_for('applications.detail', rec_id=r.id) }}">{{ r.company }}</a></h2>
+      <p class="muted" style="margin:0;font-size:.84rem">{{ r.position or '직무 미입력' }}{% if r.role_code in role_map %} · {{ role_map[r.role_code].name }}{% endif %}</p>
+      <p class="muted" style="margin:4px 0 0;font-size:.78rem">{% if r.applied_at %}제출 {{ r.applied_at }} · {% endif %}문항 {{ r.qa|length }} · 총 {{ '{:,}'.format(r.total_chars) }}자</p>
+    </div>
+    <div class="card"><h4>사업·최근 이슈</h4><p class="pre">{{ r.company_info or '-' }}</p></div>
+    <div class="card"><h4>인재상</h4><p class="pre">{{ r.talent or '-' }}</p></div>
+    <div class="card"><h4>쓴 경험</h4>
+      <div class="chips">{% for e in used[r.id] %}<span class="chip {{ 'on' if e in shared }}">{{ e.title }}</span>{% else %}<span class="muted">찾지 못했어요</span>{% endfor %}</div></div>
+    {% for i in range(rows) %}
+      {% if i < r.qa|length %}{% set item = r.qa[i] %}
+      <div class="card qa-view"><div class="qa-head"><span class="qa-n">Q{{ i + 1 }}</span><h4>{{ item.q or '(문항 없음)' }}</h4>
+        <span class="qa-len">{{ '{:,}'.format(item.a|replace('\n', '')|length) }}자{% if item.limit %} / {{ item.limit }}{% endif %}</span></div>
+        <p class="pre">{{ item.a or '-' }}</p></div>
+      {% else %}<div class="card qa-view empty-slot"><span class="muted">Q{{ i + 1 }} 없음</span></div>{% endif %}
+    {% endfor %}
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

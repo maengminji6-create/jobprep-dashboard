@@ -1,0 +1,30 @@
+# Render 블루프린트: 웹 서비스 + PostgreSQL
+# 플랜 이름·무료 정책은 Render 문서에서 최신 내용을 확인하세요.
+services:
+  - type: web
+    name: tradeready-web
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    preDeployCommand: flask db upgrade
+    startCommand: gunicorn wsgi:app --workers 2 --timeout 60
+    envVars:
+      - key: APP_ENV
+        value: prod
+      - key: FLASK_APP
+        value: wsgi.py
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: tradeready-db
+          property: connectionString
+      - key: OPENAI_API_KEY      # Render 대시보드에서 직접 입력(코드에 넣지 않음)
+        sync: false
+      - key: AI_MODEL
+        value: gpt-5.4-mini
+      - key: ALLOW_SIGNUP        # 내 계정을 만든 뒤 0 으로 바꾸면 다른 사람은 가입 불가
+        value: "1"
+
+
+databases:
+  - name: tradeready-db

@@ -1,0 +1,25 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "대시보드 실행 (자동 새로고침)",
+      "detail": "VS Code로 폴더를 열면 자동으로 서버를 켭니다. 파일을 저장하면 브라우저가 알아서 새로고침돼요.",
+      "type": "shell",
+      "command": "${workspaceFolder}\\.venv\\Scripts\\flask.exe",
+      "args": ["run", "--debug"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "isBackground": true,
+      "runOptions": { "runOn": "folderOpen" },
+      "presentation": { "reveal": "always", "panel": "dedicated" },
+      "problemMatcher": []
+    },
+    {
+      "label": "테스트 실행",
+      "type": "shell",
+      "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+      "args": ["-m", "pytest", "-q"],
+      "group": "test",
+      "problemMatcher": []
+    }
+  ]
+}

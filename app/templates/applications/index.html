@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% from "components/macros.html" import csrf, empty %}
+{% block title %}자소서 보관함{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><span class="eyebrow">Application Archive</span>
+    <h1>자소서 보관함</h1>
+    <p>제출한 자기소개서와 그 기업 정보를 저장해 두고, 나중에 다시 보거나 2~3개를 나란히 비교해요.</p></div>
+  <a class="btn" href="{{ url_for('applications.new') }}">＋ 지원 기록 추가</a>
+</div>
+
+<section class="block reveal">
+  <div class="block-head"><div class="title"><span class="num">01</span><div><h2>내 지원 기록 <small class="muted">{{ total }}개</small></h2>
+    <p>카드를 눌러 자소서와 기업 정보를 보고, 왼쪽 위 체크박스로 2~3개를 골라 비교하세요.</p></div></div>
+    <form method="get" class="row" style="gap:8px">
+      {% if status %}<input type="hidden" name="status" value="{{ status }}">{% endif %}
+      <input type="search" name="q" value="{{ q }}" placeholder="회사·직무·자소서 내용 검색" style="width:240px">
+    </form>
+  </div>
+  <div class="filter-chips">
+    <a class="chip-link {{ 'on' if not status }}" href="{{ url_for('applications.index', q=q or None) }}">전체 <b>{{ total }}</b></a>
+    {% for s in statuses %}<a class="chip-link {{ 'on' if s == status }}" href="{{ url_for('applications.index', status=s, q=q or None) }}">{{ s }} <b>{{ counts[s] }}</b></a>{% endfor %}
+  </div>
+
+  {% if records %}
+  <form method="get" action="{{ url_for('applications.compare') }}" id="compareForm">
+    <div class="compare-bar"><span id="pickCount">비교할 지원 기록을 2~3개 고르세요</span>
+      <button class="btn sm" type="submit" id="compareBtn" disabled>선택한 지원 비교하기</button></div>
+    <div class="app-grid">
+      {% for r in records %}
+      <article class="card app-card status-{{ loop.index0 }}">
+        <label class="app-pick" title="비교할 기록 고르기"><input type="checkbox" name="ids" value="{{ r.id }}"></label>
+        <a class="app-link" href="{{ url_for('applications.detail', rec_id=r.id) }}">
+          <span class="badge st st-{{ statuses.index(r.status) if r.status in statuses else 0 }}">{{ r.status }}</span>
+          <h3>{{ r.company }}</h3>
+          <p class="muted" style="margin:0;font-size:.84rem">{{ r.position or '직무 미입력' }}{% if r.role_code in role_map %} · {{ role_map[r.role_code].name }}{% endif %}</p>
+          <div class="app-meta">
+            <span>문항 <b>{{ r.qa|length }}</b></span><span>총 <b>{{ '{:,}'.format(r.total_chars) }}</b>자</span>
+            {% if r.applied_at %}<span>제출 {{ r.applied_at }}</span>{% elif r.deadline %}<span>마감 {{ r.deadline }}</span>{% endif %}
+          </div>
+          {% if r.qa %}<p class="clip" style="max-width:none">{{ r.qa[0].q }}</p>{% endif %}
+        </a>
+      </article>
+      {% endfor %}
+    </div>
+  </form>
+  {% else %}
+  <div class="card">{{ empty('아직 저장한 지원 기록이 없어요' if not q and not status else '조건에 맞는 기록이 없어요', '＋ 지원 기록 추가를 눌러 제출한 자소서와 기업 정보를 저장해 보세요. 공고 매칭 화면에서도 바로 만들 수 있어요.') }}</div>
+  {% endif %}
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var form = document.getElementById("compareForm");
+  if (!form) return;
+  var btn = document.getElementById("compareBtn"), label = document.getElementById("pickCount");
+  function sync() {
+    var picked = form.querySelectorAll("input[name=ids]:checked");
+    form.querySelectorAll("input[name=ids]").forEach(function (c) {
+      c.disabled = !c.checked && picked.length >= 3;
+      c.closest(".app-card").classList.toggle("picked", c.checked);
+    });
+    btn.disabled = picked.length < 2;
+    label.textContent = picked.length ? picked.length + "개 선택" + (picked.length < 2 ? " · 1개 더 고르세요" : "") : "비교할 지원 기록을 2~3개 고르세요";
+  }
+  form.addEventListener("change", sync); sync();
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,294 @@
+{% extends "base.html" %}
+{% from "components/macros.html" import csrf, meter, delete_button, empty, ring %}
+{% block title %}공고 매칭{% endblock %}
+{% macro rec_block(rec, n) %}
+        <div class="rec">
+          <div class="top"><div><b>{{ n }}. {{ rec.title }}</b> <span class="muted" style="font-size:.8rem">{{ rec.category }}</span></div>
+            <div style="width:150px">{{ meter(rec.score) }}</div></div>
+          <div class="chips" style="margin:8px 0">
+            <span class="badge">{{ rec.question }}</span>
+            {% for k in rec.hit_required %}<span class="chip on">필수·{{ k }}</span>{% endfor %}
+            {% for k in rec.hit_preferred %}<span class="chip">우대·{{ k }}</span>{% endfor %}
+            {% for k in rec.hit_tokens %}<span class="chip">{{ k }}</span>{% endfor %}
+          </div>
+          {% if rec.evidence %}
+          <ul class="evidence">
+            {% for ev in rec.evidence %}
+            <li><span class="ev-tag p">공고</span><q>{{ ev.posting|highlight(ev.words) }}</q>
+                <span class="ev-arrow">↔</span>
+                <span class="ev-tag e">내 경험</span><q>{{ ev.experience|highlight(ev.words) }}</q></li>
+            {% endfor %}
+          </ul>
+          {% endif %}
+          <p class="rec-appeal">{{ rec.appeal }}</p>
+        </div>
+{% endmacro %}
+
+{% block content %}
+<div class="page-head">
+  <div><span class="eyebrow">Posting Match</span>
+    <h1>공고 매칭</h1>
+    <p>관심 공고를 넣어 나와의 매칭을 미리 스크리닝하고, 좋은 공고만 ★ 저장해 산업·직무별로 모아 비교해요.</p></div>
+  <a class="btn secondary" href="{{ url_for('experiences.index') }}">← 경험 분석</a>
+</div>
+
+{% if not analysis %}
+{# ── 01 공고 넣기 ── #}
+<section class="block reveal">
+  <div class="block-head"><div class="title"><span class="num">01</span><div><h2>공고 넣기</h2>
+    <p>관심 공고를 넣으면 나와 얼마나 맞는지 바로 스크리닝해요. 마음에 드는 공고만 ★ 저장하세요.</p></div></div></div>
+  <form class="card" method="post" action="{{ url_for('experiences.posting') }}">
+    {{ csrf() }}
+    <div class="row">
+      <div class="field" style="flex:3 1 300px"><label>채용공고 링크</label>
+        <input type="url" name="url" placeholder="https://..." value="{{ form.url if form else '' }}"></div>
+      <div class="field"><label>회사명 (선택)</label><input type="text" name="company" value="{{ form.company if form else '' }}"></div>
+    </div>
+    <details class="box" {{ 'open' if form and form.posting_text }}>
+      <summary>링크가 안 열리면 공고 내용을 붙여 넣기</summary>
+      <p class="muted" style="font-size:.84rem">로그인이 필요하거나 앱 전용인 공고는 링크로 읽을 수 없어요. 공고 본문(담당업무·자격요건·우대사항)을 복사해 넣으면 이 내용으로 분석해요.</p>
+      <textarea name="posting_text" style="min-height:160px">{{ form.posting_text if form else '' }}</textarea>
+    </details>
+    <div class="row" style="margin-top:12px;align-items:center;gap:14px">
+      <button class="btn" type="submit" data-busy="공고를 읽고 분석하는 중…">매칭 분석하기</button>
+      <label style="display:inline-flex;align-items:center;gap:6px;margin:0"><input type="checkbox" name="save_now" value="1"> 분석하면서 바로 ★ 저장</label>
+    </div>
+  </form>
+</section>
+
+{# ── 02 저장한 공고 ── #}
+<section class="block reveal" id="saved">
+  <div class="block-head"><div class="title"><span class="num">02</span><div><h2>★ 저장한 공고 <small class="muted">{{ saved_total }}개</small></h2>
+    <p>산업·직무로 골라 보고, 2~4개를 체크해 나란히 비교하세요.</p></div></div>
+    <form method="get" action="{{ url_for('experiences.posting') }}#saved" class="row" style="gap:8px">
+      {% if ind %}<input type="hidden" name="ind" value="{{ ind }}">{% endif %}
+      {% if prole %}<input type="hidden" name="prole" value="{{ prole }}">{% endif %}
+      <input type="search" name="q" value="{{ q }}" placeholder="회사·공고·메모 검색" style="width:220px">
+    </form>
+  </div>
+  {% if saved_total %}
+  <div class="facet">
+    <span class="facet-label">산업</span>
+    <a class="chip-link {{ 'on' if not ind }}" href="{{ url_for('experiences.posting', prole=prole or None, q=q or None) }}#saved">전체</a>
+    {% for c, n in industries %}<a class="chip-link {{ 'on' if c == ind }}" href="{{ url_for('experiences.posting', ind=c, prole=prole or None, q=q or None) }}#saved">{{ n }} <b>{{ ind_counts[c] }}</b></a>{% endfor %}
+  </div>
+  <div class="facet">
+    <span class="facet-label">직무</span>
+    <a class="chip-link {{ 'on' if not prole }}" href="{{ url_for('experiences.posting', ind=ind or None, q=q or None) }}#saved">전체</a>
+    {% for c, name, n in role_facets %}<a class="chip-link {{ 'on' if c == prole }}" href="{{ url_for('experiences.posting', ind=ind or None, prole=c, q=q or None) }}#saved">{{ name }} <b>{{ n }}</b></a>{% endfor %}
+  </div>
+  {% endif %}
+  {% if saved %}
+  <form method="get" action="{{ url_for('experiences.posting_compare') }}" id="pickForm">
+    <div class="compare-bar"><span id="pickCount">비교할 공고를 2~4개 고르세요</span>
+      <button class="btn sm" type="submit" id="pickBtn" disabled>선택한 공고 비교하기</button></div>
+    <div class="app-grid">
+      {% for p in saved %}{% set pr = p.result %}
+      <article class="card app-card posting-card">
+        <label class="app-pick" title="비교할 공고 고르기"><input type="checkbox" name="ids" value="{{ p.id }}"></label>
+        <a class="app-link" href="{{ url_for('experiences.posting_detail', pa_id=p.id) }}">
+          <div class="posting-card-top">
+            {{ ring(pr.get('coverage', 0), '매칭') }}
+            <div><h3>{{ p.company or p.title[:30] }}</h3>
+              {% if p.company and p.title %}<p class="clip" style="margin:0">{{ p.title }}</p>{% endif %}</div>
+          </div>
+          <div class="chips" style="margin:10px 0 6px">
+            <span class="chip on">{{ all_industries|selectattr(0, 'equalto', p.industry)|map(attribute=1)|first or '기타' }}</span>
+            {% if p.role_code in role_map %}<span class="chip">{{ role_map[p.role_code].name }}</span>{% endif %}
+          </div>
+          {% set top = (pr.get('recommendations') or [])[:1] %}
+          {% if top %}<p class="muted" style="font-size:.8rem;margin:0">대표 경험 · {{ top[0].title }} ({{ top[0].score }})</p>{% endif %}
+          {% if p.memo %}<p class="memo" style="margin:4px 0 0">📝 {{ p.memo[:50] }}</p>{% endif %}
+        </a>
+      </article>
+      {% endfor %}
+    </div>
+  </form>
+  {% else %}
+  <div class="card">{{ empty('조건에 맞는 저장한 공고가 없어요' if (ind or prole or q) else '아직 저장한 공고가 없어요', '분석한 공고 화면에서 ★ 공고 저장을 누르면 여기에 모여요.') }}</div>
+  {% endif %}
+</section>
+
+{# ── 03 최근 조회 기록 ── #}
+<section class="block reveal" id="history">
+  <div class="block-head"><div class="title"><span class="num">03</span><div><h2>최근 조회 기록 <small class="muted">{{ history|length }}개</small></h2>
+    <p>저장하지 않은 스크리닝 결과예요. 필요한 것만 ★ 저장하고, 나머지는 지워 두세요.</p></div></div>
+    {% if history %}
+    <form method="post" action="{{ url_for('experiences.posting_history_clear') }}" onsubmit="return confirm('저장하지 않은 조회 기록을 모두 지울까요? 저장한 공고는 그대로예요.')">
+      {{ csrf() }}<button class="btn ghost sm" type="submit">기록 전체 지우기</button></form>
+    {% endif %}
+  </div>
+  {% if history %}
+  <ul class="history-list">
+    {% for h in history %}
+    <li>
+      <a href="{{ url_for('experiences.posting_detail', pa_id=h.id) }}"><b>{{ h.company or h.title[:40] }}</b>
+        <span class="muted">{{ h.result.get('main_role_name', '') }} · 매칭 {{ h.result.get('coverage', 0) }}% · {{ h.created_at|localtime('%m/%d %H:%M') }}</span></a>
+      <form method="post" action="{{ url_for('experiences.posting_save', pa_id=h.id) }}" class="inline">{{ csrf() }}
+        <input type="hidden" name="next" value="{{ url_for('experiences.posting') }}#history">
+        <button class="btn secondary sm" type="submit">★ 저장</button></form>
+      <form method="post" action="{{ url_for('experiences.posting_delete', pa_id=h.id) }}" class="inline">{{ csrf() }}
+        <input type="hidden" name="next" value="{{ url_for('experiences.posting') }}#history">
+        <button class="btn ghost sm" type="submit" title="이 기록 지우기">✕</button></form>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}<p class="muted" style="font-size:.86rem">조회 기록이 없어요.</p>{% endif %}
+</section>
+{% else %}
+<div class="detail-nav">
+  <a class="btn ghost sm" href="{{ url_for('experiences.posting') }}#saved">← 저장한 공고</a>
+  <a class="btn ghost sm" href="{{ url_for('experiences.posting') }}#history">최근 조회 기록</a>
+  <a class="btn ghost sm" href="{{ url_for('experiences.posting') }}">＋ 새 공고 분석</a>
+</div>
+{% endif %}
+
+{% if analysis %}
+{% set r = result %}
+{# ── 공고 정보 ── #}
+<section class="block reveal">
+  <div class="posting-head">
+    <div>
+      <span class="eyebrow">{{ '★ 저장한 공고' if analysis.is_saved else '조회 기록 · 아직 저장 안 함' }} · {{ analysis.created_at|localtime }} 분석</span>
+      <h2>{{ analysis.company or analysis.title }}</h2>
+      {% if analysis.company and analysis.title != analysis.company %}<p class="muted" style="margin:0">{{ analysis.title }}</p>{% endif %}
+      <div class="chips" style="margin-top:10px">
+        <span class="chip on">{{ all_industries|selectattr(0, 'equalto', analysis.industry)|map(attribute=1)|first or '기타' }}</span>
+        <span class="chip on">직무 · {{ role_map[analysis.role_code].name if analysis.role_code in role_map else r.main_role_name }}</span>
+        {% if analysis.url %}<a class="chip" href="{{ analysis.url }}" target="_blank" rel="noopener noreferrer">공고 원문 열기 ↗</a>{% endif %}
+      </div>
+      {% if analysis.memo %}<p class="memo-line">📝 {{ analysis.memo }}</p>{% endif %}
+    </div>
+    <div class="posting-stats">
+      {{ ring(r.coverage, '키워드 커버') }}
+      <div><b>{{ r.recommendations|length }}</b><span>추천 경험</span></div>
+      <div><b>{{ (r.gaps_required|length) + (r.gaps_preferred|length) }}</b><span>보완 키워드</span></div>
+    </div>
+    <div class="posting-actions">
+      <form method="post" action="{{ url_for('experiences.posting_save', pa_id=analysis.id) }}">{{ csrf() }}
+        <button class="btn {{ 'secondary' if analysis.is_saved else '' }} sm" type="submit">{{ '★ 저장됨 · 저장 취소' if analysis.is_saved else '☆ 공고 저장' }}</button></form>
+      <form method="post" action="{{ url_for('experiences.posting_reanalyze', pa_id=analysis.id) }}">{{ csrf() }}
+        <button class="btn secondary sm" type="submit" title="지금의 이력·강점·자격증으로 다시 매칭">↻ 지금 이력으로 다시 매칭</button></form>
+      <a class="btn sm" href="{{ url_for('applications.new', posting=analysis.id) }}">✎ 이 공고로 지원 기록 만들기</a>
+      <details class="box"><summary>산업·직무·메모 수정</summary>
+        <form method="post" action="{{ url_for('experiences.posting_edit', pa_id=analysis.id) }}">{{ csrf() }}
+          <div class="field"><label>산업</label><select name="industry">{% for c, n in all_industries %}<option value="{{ c }}" {{ 'selected' if c == analysis.industry }}>{{ n }}</option>{% endfor %}</select></div>
+          <div class="field"><label>직무</label><select name="role_code">{% for ro in all_roles %}<option value="{{ ro.code }}" {{ 'selected' if ro.code == analysis.role_code }}>{{ ro.group_name }} · {{ ro.name }}</option>{% endfor %}</select></div>
+          <div class="field"><label>회사명</label><input type="text" name="company" value="{{ analysis.company }}"></div>
+          <div class="field"><label>공고 제목</label><input type="text" name="title" value="{{ analysis.title }}"></div>
+          <div class="field"><label>메모</label><textarea name="memo" style="min-height:70px" placeholder="예: 10/31 마감, 서류 제출 완료">{{ analysis.memo or '' }}</textarea></div>
+          <button class="btn sm" type="submit">저장</button></form></details>
+      {{ delete_button(url_for('experiences.posting_delete', pa_id=analysis.id), '이 기록 지우기') }}
+    </div>
+  </div>
+</section>
+
+{# ── 공고 원문 ↔ 매칭 ── #}
+<section class="block reveal">
+  <div class="block-head"><div class="title"><span class="num">02</span><div><h2>공고 원문 ↔ 내 매칭</h2>
+    <p>공고 원문의 <mark class="hl-exp">노란 단어</mark>는 내 경험과 겹치는 키워드, <mark class="hl-str">초록 단어</mark>는 내 강점이 드러나는 단서예요. 오른쪽에 근거 문장을 짝지어 보여 드려요.</p></div></div></div>
+  <div class="match-layout">
+    <article class="card posting-doc">
+      <div class="doc-top"><h3>공고 원문</h3>
+        <span class="hl-legend"><mark class="hl-exp">내 경험</mark><mark class="hl-str">내 강점</mark></span></div>
+      <div class="doc-body">
+        {% for ln in doc %}
+          {% if ln.head %}<p class="doc-h kind-{{ ln.kind }}">{{ ln.text|highlight(exp_words, str_words) }}</p>
+          {% else %}<p class="doc-l">{{ ln.text|highlight(exp_words, str_words) }}</p>{% endif %}
+        {% else %}<p class="muted">공고 본문이 비어 있어요.</p>{% endfor %}
+      </div>
+    </article>
+
+    <div class="match-panel">
+      <div class="card">
+        <div class="card-head"><h3>추천 경험과 근거</h3><small>공고 문장 ↔ 내 경험 문장</small></div>
+        {% for rec in r.recommendations[:3] %}{{ rec_block(rec, loop.index) }}
+        {% else %}{{ empty('공고와 겹치는 경험을 찾지 못했어요', '경험 내용에 담당업무와 관련된 행동·도구·성과를 보강해 보세요.') }}{% endfor %}
+        {% if r.recommendations|length > 3 %}
+        <details class="more-recs"><summary>다른 추천 경험 {{ r.recommendations|length - 3 }}개 더 보기</summary>
+          {% for rec in r.recommendations[3:] %}{{ rec_block(rec, loop.index + 3) }}{% endfor %}</details>
+        {% endif %}
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h3>내 강점과 공고</h3>{% if not has_strength %}<a class="btn ghost sm" href="{{ url_for('strengths.index') }}">강점 결과지 올리기 →</a>{% endif %}</div>
+        {% for s in r.strength_matches %}
+        <div class="s-match">
+          <b>{{ s.name }}</b> <span class="muted" style="font-size:.8rem">{{ s.summary }}</span>
+          {% for ln in s.posting_lines %}<p class="quote"><span class="ev-tag p">공고</span>{{ ln|highlight(None, s.words) }}</p>{% endfor %}
+          {% if s.experiences %}<p class="muted" style="font-size:.8rem;margin:0">이 강점이 드러난 내 경험 · {{ s.experiences|join(', ') }}</p>{% endif %}
+        </div>
+        {% else %}
+        <p class="muted" style="font-size:.86rem">{{ '공고 문장에서 내 강점과 맞닿는 성향 단서를 찾지 못했어요.' if has_strength else '강점 결과지를 올리면 공고가 원하는 성향과 내 강점을 연결해 보여 드려요.' }}</p>
+        {% endfor %}
+      </div>
+
+      <div class="grid grid-2" style="gap:14px">
+        <div class="card">
+          <h3>자격증·어학</h3>
+          {% for c in r.cert_matches %}
+          <div class="cert-line"><b>{{ c.name }}</b>{% if c.score %} <span class="muted">{{ c.score }}</span>{% endif %}
+            {% if c.mentioned %}<span class="badge ok">공고에 언급</span>{% endif %}
+            <div>{{ meter(c.relevance) }}</div><small class="muted">{{ c.reason }}</small></div>
+          {% else %}<p class="muted" style="font-size:.84rem">이 공고와 관련 높은 자격증이 아직 없어요.</p>{% endfor %}
+        </div>
+        <div class="card">
+          <h3>보완하면 좋은 키워드</h3>
+          <p class="muted" style="font-size:.8rem;margin-bottom:4px">필수</p>
+          <div class="chips" style="margin-bottom:10px">{% for k in r.gaps_required %}<span class="chip gap">{{ k }}</span>{% else %}<span class="muted">없음</span>{% endfor %}</div>
+          <p class="muted" style="font-size:.8rem;margin-bottom:4px">우대</p>
+          <div class="chips">{% for k in r.gaps_preferred %}<span class="chip">{{ k }}</span>{% else %}<span class="muted">없음</span>{% endfor %}</div>
+        </div>
+      </div>
+
+      <div class="card ai-story" id="ai-report">
+        <div class="card-head"><h3>✦ AI 매칭 리포트</h3>
+          {% if ai_enabled %}<form method="post" action="{{ url_for('experiences.posting_ai', pa_id=analysis.id) }}" data-ai-form>{{ csrf() }}
+            <button class="btn sm" type="submit">{{ '다시 받기' if ai else 'AI 리포트 받기' }}</button></form>
+          {% else %}<small class="muted">.env 에 OPENAI_API_KEY 를 넣으면 쓸 수 있어요</small>{% endif %}</div>
+        {% if ai %}
+          {% if stale_ai %}<p class="badge warn" style="margin-bottom:8px">리포트 이후 이력·강점이 바뀌었어요 · 다시 받기를 눌러 보세요</p>{% endif %}
+          <p class="ai-core"><b>이 공고가 원하는 사람</b> — {{ ai.posting_summary }}</p>
+          <p class="ai-core"><b>나와의 적합도</b> — {{ ai.fit_summary }}</p>
+          <h4 class="ai-h">요구 ↔ 근거 경험</h4>
+          <ul class="evidence">
+            {% for m in ai.matches %}{% set e = exps.get(m.experience_id) %}
+            <li><span class="ev-tag p">공고</span><q>{{ m.requirement }}</q><span class="ev-arrow">↔</span>
+              <span class="ev-tag e">{{ e.title if e else '경험' }}</span><q>{{ m.evidence }}</q>
+              <p class="ev-why">{{ m.why }}</p></li>
+            {% endfor %}
+          </ul>
+          {% if ai.strengths %}<h4 class="ai-h">강점으로 보여 줄 것</h4>
+          <ul class="plain">{% for s in ai.strengths %}<li><b>{{ s.name }}</b> · 공고 신호 “{{ s.posting_signal }}” → {{ s.how_to_show }}</li>{% endfor %}</ul>{% endif %}
+          {% if ai.gaps %}<h4 class="ai-h">부족한 점과 보완</h4>
+          <ul class="plain">{% for g in ai.gaps %}<li><b>{{ g.requirement }}</b> → {{ g.suggestion }}</li>{% endfor %}</ul>{% endif %}
+          <p class="s-tip" style="margin-top:12px"><b>자소서 전략</b> · {{ ai.essay_strategy }}</p>
+        {% else %}
+          <p class="muted" style="font-size:.86rem">공고 전체와 내 경험·강점·자격증을 함께 읽고, 요구 문장마다 어떤 경험을 근거로 쓸지 정리해 드려요(10~40초). 공고와 내 이력 내용이 OpenAI로 전송돼요.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</section>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var form = document.getElementById("pickForm");
+  if (!form) return;
+  var btn = document.getElementById("pickBtn"), label = document.getElementById("pickCount");
+  function sync() {
+    var picked = form.querySelectorAll("input[name=ids]:checked");
+    form.querySelectorAll("input[name=ids]").forEach(function (c) {
+      c.disabled = !c.checked && picked.length >= 4;
+      c.closest(".app-card").classList.toggle("picked", c.checked);
+    });
+    btn.disabled = picked.length < 2;
+    label.textContent = picked.length ? picked.length + "개 선택" + (picked.length < 2 ? " · 1개 더 고르세요" : "") : "비교할 공고를 2~4개 고르세요";
+  }
+  form.addEventListener("change", sync); sync();
+})();
+</script>
+{% endblock %}

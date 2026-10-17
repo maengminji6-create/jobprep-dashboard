@@ -1,0 +1,23 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Flask: 대시보드 실행",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "flask",
+      "env": { "FLASK_APP": "wsgi.py", "FLASK_DEBUG": "1" },
+      "args": ["run", "--port", "5000"],
+      "jinja": true,
+      "justMyCode": true
+    },
+    {
+      "name": "pytest: 전체 테스트",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "pytest",
+      "args": ["-q"],
+      "justMyCode": true
+    }
+  ]
+}

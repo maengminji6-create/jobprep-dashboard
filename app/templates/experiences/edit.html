@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% from "components/macros.html" import csrf %}
+{% block title %}경험 수정{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><span class="eyebrow">Edit Experience</span><h1>경험 수정</h1>
+    <p>저장하면 TOP 3와 차트에 바로 반영돼요.</p></div>
+  <a class="btn secondary" href="{{ url_for('experiences.index') }}">← 경험 분석</a>
+</div>
+<form class="card" method="post">
+  {{ csrf() }}
+  <div class="row">
+    <div class="field" style="flex:2 1 260px"><label>경험 이름</label><input type="text" name="title" value="{{ exp.title }}" required></div>
+    <div class="field"><label>분류</label><select name="category">{% for c in categories %}<option {{ 'selected' if c == exp.category }}>{{ c }}</option>{% endfor %}</select></div>
+  </div>
+  <div class="row">
+    <div class="field"><label>기관·회사</label><input type="text" name="organization" value="{{ exp.organization }}"></div>
+    <div class="field"><label>기간</label><input type="text" name="period" value="{{ exp.period }}"></div>
+  </div>
+  <div class="grid grid-2" style="gap:12px">
+    {% for f in exp.TEXT_FIELDS if f != 'keywords' %}
+    <div class="field"><label>{{ exp.TEXT_LABELS[f] }}</label><textarea name="{{ f }}" style="min-height:{{ 200 if f == 'content' else 130 }}px">{{ exp[f] or '' }}</textarea></div>
+    {% endfor %}
+  </div>
+  <div class="field"><label>키워드 (쉼표나 #으로 구분)</label><input type="text" name="keywords" value="{{ exp.keywords or '' }}"></div>
+  <button class="btn" type="submit">저장</button>
+</form>
+{% endblock %}

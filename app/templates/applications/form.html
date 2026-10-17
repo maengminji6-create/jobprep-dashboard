@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% from "components/macros.html" import csrf %}
+{% block title %}{{ '지원 기록 수정' if rec else '지원 기록 추가' }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><span class="eyebrow">Application Archive</span>
+    <h1>{{ '지원 기록 수정' if rec else '지원 기록 추가' }}</h1>
+    <p>회사·직무, 기업 정보, 제출한 자소서 문항과 답변을 함께 저장해요.</p></div>
+  <a class="btn secondary" href="{{ url_for('applications.detail', rec_id=rec.id) if rec else url_for('applications.index') }}">← 돌아가기</a>
+</div>
+
+<form method="post" action="{{ url_for('applications.edit', rec_id=rec.id) if rec else url_for('applications.new') }}">
+  {{ csrf() }}
+  <section class="block">
+    <div class="block-head"><div class="title"><span class="num">01</span><div><h2>지원 정보</h2><p>어느 회사, 어떤 직무에 언제 냈는지</p></div></div></div>
+    <div class="card">
+      <div class="row">
+        <div class="field" style="flex:2 1 220px"><label>회사명 *</label><input type="text" name="company" required value="{{ form.company or '' }}"></div>
+        <div class="field" style="flex:2 1 220px"><label>지원 직무·공고명</label><input type="text" name="position" value="{{ form.position or '' }}"></div>
+        <div class="field"><label>진행 상태</label><select name="status">{% for s in statuses %}<option {{ 'selected' if s == form.status }}>{{ s }}</option>{% endfor %}</select></div>
+      </div>
+      <div class="row">
+        <div class="field"><label>직무 분류</label><select name="role_code"><option value="">선택 안 함</option>
+          {% for r in roles %}<option value="{{ r.code }}" {{ 'selected' if r.code == form.role_code }}>{{ r.group_name }} · {{ r.name }}</option>{% endfor %}</select></div>
+        <div class="field"><label>제출일</label><input type="text" name="applied_at" placeholder="2026.10.17" value="{{ form.applied_at or '' }}"></div>
+        <div class="field"><label>마감일</label><input type="text" name="deadline" placeholder="2026.10.31" value="{{ form.deadline or '' }}"></div>
+      </div>
+      <div class="row">
+        <div class="field" style="flex:2 1 260px"><label>공고 링크</label><input type="url" name="url" value="{{ form.url or '' }}"></div>
+        <div class="field" style="flex:2 1 260px"><label>공고 매칭 분석과 연결 (선택)</label>
+          <select name="posting_id"><option value="">연결 안 함</option>
+            {% for p in postings %}<option value="{{ p.id }}" {{ 'selected' if p.id == form.posting_id }}>{{ p.company or p.title[:40] }} · {{ p.created_at|localtime('%m/%d') }}</option>{% endfor %}</select></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="block">
+    <div class="block-head"><div class="title"><span class="num">02</span><div><h2>기업 정보</h2><p>면접 전에 다시 볼 내용을 정리해 두세요</p></div></div></div>
+    <div class="card grid grid-3" style="gap:14px">
+      <div class="field"><label>사업·제품·최근 이슈</label><textarea name="company_info" style="min-height:150px" placeholder="예: 주력 제품, 주요 수출국, 최근 뉴스, 매출·규모">{{ form.company_info or '' }}</textarea></div>
+      <div class="field"><label>인재상·핵심가치</label><textarea name="talent" style="min-height:150px" placeholder="예: 도전, 고객 중심, 글로벌 마인드">{{ form.talent or '' }}</textarea></div>
+      <div class="field"><label>메모 (면접 정보·연봉·느낀 점)</label><textarea name="notes" style="min-height:150px">{{ form.notes or '' }}</textarea></div>
+    </div>
+  </section>
+
+  <section class="block">
+    <div class="block-head"><div class="title"><span class="num">03</span><div><h2>자기소개서</h2><p>문항마다 글자 수가 자동으로 세져요(공백 포함·줄바꿈 제외)</p></div></div>
+      <button class="btn secondary sm" type="button" id="addQa">＋ 문항 추가</button></div>
+    <div id="qaList">
+      {% for item in (qa if qa else [{'q': '', 'limit': '', 'a': ''}]) %}
+      <div class="card qa-item">
+        <div class="row">
+          <div class="field" style="flex:4 1 300px"><label>문항</label><input type="text" name="q" value="{{ item.q }}" placeholder="예: 지원 동기와 입사 후 포부를 적어 주세요"></div>
+          <div class="field" style="flex:0 1 120px"><label>글자 수 제한</label><input type="text" name="limit" value="{{ item.limit }}" placeholder="700" inputmode="numeric"></div>
+          <div class="field" style="flex:0 0 auto"><button class="btn ghost sm qa-remove" type="button">문항 삭제</button></div>
+        </div>
+        <textarea name="a" class="qa-answer" style="min-height:200px" placeholder="제출한 답변을 붙여 넣으세요">{{ item.a }}</textarea>
+        <p class="qa-count"><b>0</b>자</p>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <div class="form-actions"><button class="btn" type="submit">저장</button></div>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var list = document.getElementById("qaList");
+  function count(item) {
+    var a = item.querySelector(".qa-answer"), lim = parseInt(item.querySelector("input[name=limit]").value, 10);
+    var n = a.value.replace(/\n/g, "").length, out = item.querySelector(".qa-count");
+    out.innerHTML = "<b>" + n.toLocaleString() + "</b>자" + (lim ? " / " + lim.toLocaleString() + "자" : "");
+    out.classList.toggle("over", !!lim && n > lim);
+  }
+  function wire(item) {
+    item.querySelector(".qa-answer").addEventListener("input", function () { count(item); });
+    item.querySelector("input[name=limit]").addEventListener("input", function () { count(item); });
+    item.querySelector(".qa-remove").addEventListener("click", function () {
+      if (list.querySelectorAll(".qa-item").length > 1) item.remove();
+      else { item.querySelectorAll("input, textarea").forEach(function (f) { f.value = ""; }); count(item); }
+    });
+    count(item);
+  }
+  list.querySelectorAll(".qa-item").forEach(wire);
+  document.getElementById("addQa").addEventListener("click", function () {
+    var tpl = list.querySelector(".qa-item").cloneNode(true);
+    tpl.querySelectorAll("input, textarea").forEach(function (f) { f.value = ""; });
+    list.appendChild(tpl); wire(tpl); tpl.querySelector("input[name=q]").focus();
+  });
+})();
+</script>
+{% endblock %}

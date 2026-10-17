@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% from "components/macros.html" import meter, ring %}
+{% block title %}공고 비교{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><span class="eyebrow">Compare Postings</span>
+    <h1>저장한 공고 비교</h1>
+    <p>공고마다 나와의 매칭, 쓸 경험, 강점·자격증, 부족한 키워드를 나란히 봐요.</p></div>
+  <a class="btn secondary" href="{{ url_for('experiences.posting') }}#saved">← 저장한 공고</a>
+</div>
+
+<div class="card best-box">
+  <b>지금 이력으로 가장 잘 맞는 공고 · {{ best.company or best.title[:30] }}</b>
+  <span class="muted" style="font-size:.84rem">키워드 커버 {{ best.result.get('coverage', 0) }}%{% if best.result.get('recommendations') %} · 대표 경험 {{ best.result.recommendations[0].title }}{% endif %}</span>
+</div>
+
+<div class="table-wrap">
+<table class="pcompare cols-{{ items|length }}">
+  <thead>
+    <tr><th></th>
+      {% for p in items %}<th class="{{ 'is-best' if p.id == best.id }}">
+        <a href="{{ url_for('experiences.posting_detail', pa_id=p.id) }}">{{ p.company or p.title[:30] }}</a>
+        {% if p.company and p.title %}<div class="muted pc-sub">{{ p.title[:60] }}</div>{% endif %}
+      </th>{% endfor %}</tr>
+  </thead>
+  <tbody>
+    <tr><th>매칭</th>{% for p in items %}<td class="{{ 'is-best' if p.id == best.id }}">{{ ring(p.result.get('coverage', 0), '키워드 커버') }}</td>{% endfor %}</tr>
+    <tr><th>산업</th>{% for p in items %}<td>{{ ind_map.get(p.industry, '기타') }}</td>{% endfor %}</tr>
+    <tr><th>직무</th>{% for p in items %}<td>{{ role_map[p.role_code].name if p.role_code in role_map else p.result.get('main_role_name', '-') }}</td>{% endfor %}</tr>
+    <tr><th>쓸 경험 TOP 3</th>{% for p in items %}<td>
+      {% for rec in (p.result.get('recommendations') or [])[:3] %}<div class="pc-rec"><span>{{ rec.title }}</span>{{ meter(rec.score) }}</div>
+      {% else %}<span class="muted">없음</span>{% endfor %}</td>{% endfor %}</tr>
+    <tr><th>내 강점</th>{% for p in items %}<td><div class="chips">
+      {% for s in p.result.get('strength_matches') or [] %}<span class="chip">{{ s.name }}</span>{% else %}<span class="muted">-</span>{% endfor %}</div></td>{% endfor %}</tr>
+    <tr><th>자격증</th>{% for p in items %}<td><div class="chips">
+      {% for c in p.result.get('cert_matches') or [] %}<span class="chip {{ 'on' if c.mentioned }}">{{ c.name }}{% if c.mentioned %} · 언급{% endif %}</span>{% else %}<span class="muted">-</span>{% endfor %}</div></td>{% endfor %}</tr>
+    <tr><th>부족한 필수 키워드</th>{% for p in items %}<td><div class="chips">
+      {% for k in p.result.get('gaps_required') or [] %}<span class="chip gap">{{ k }}</span>{% else %}<span class="muted">없음</span>{% endfor %}</div></td>{% endfor %}</tr>
+    <tr><th>메모</th>{% for p in items %}<td class="pre">{{ p.memo or '-' }}</td>{% endfor %}</tr>
+  </tbody>
+</table>
+</div>
+{% endblock %}

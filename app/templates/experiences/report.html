@@ -1,0 +1,103 @@
+{% from "components/logo.html" import logo %}
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ current_user.name }} 이력 정리 · GROWLY</title>
+  <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='img/logo.svg') }}">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600&family=Montserrat:wght@500;600&display=swap">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/components.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/report.css') }}">
+</head>
+<body class="report-body">
+<div class="report-bar no-print">
+  <span>이 화면을 PDF로 저장할 수 있어요. 인쇄 창에서 <b>대상: PDF로 저장</b>을 고르세요.</span>
+  <button class="btn" type="button" onclick="window.print()">⤓ PDF로 저장</button>
+  <a class="btn secondary" href="{{ url_for('experiences.index') }}">← 대시보드</a>
+</div>
+
+<main class="report">
+  <header class="report-head">
+    {{ logo(34, 'rep') }}
+    <div class="report-title">
+      <h1>{{ current_user.name }}님의 이력 정리</h1>
+      <p>{{ today.strftime('%Y.%m.%d') }} 기준 · 경험 {{ exp_count }}개 · 자격증·어학 {{ certs|length }}개</p>
+    </div>
+  </header>
+
+  {% if recs %}
+  <section class="r-sec">
+    <h2>추천 직무</h2>
+    <div class="r-recs">
+      {% for r in recs %}
+      <div class="r-rec"><span class="r-n">{{ loop.index }}</span><b>{{ r.name }}</b><span class="r-score">{{ r.score }}점</span>
+        <small>{{ r.group_name }}{% if r.experiences %} · 근거: {{ r.experiences|join(', ') }}{% endif %}</small></div>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  {% if top3 %}
+  <section class="r-sec">
+    <h2>{{ role_name }} TOP 3 경험과 어필 포인트</h2>
+    {% for a in top3 %}{% set c = comments[a.id].data %}
+    <div class="r-item">
+      <div class="r-item-head"><span class="r-n">{{ loop.index }}</span><b>{{ a.title }}</b>
+        <span class="r-meta">{{ a.category }}{% if a.period %} · {{ a.period }}{% endif %} · 적합도 {{ a.roles[role].score }} · 강점 {{ a.strength }}</span></div>
+      {% if c.summary %}<p>{{ c.summary }}</p>{% endif %}
+      {% if c.appeal_points %}<ul>{% for p in c.appeal_points %}<li>{{ p }}</li>{% endfor %}</ul>{% endif %}
+      {% if c.essay_question %}<p class="r-small">추천 문항: {{ c.essay_question }}{% if c.opening_sentence %} · 첫 문장 예시: “{{ c.opening_sentence }}”{% endif %}</p>{% endif %}
+    </div>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  {% if strength_profile and strength_profile.strengths %}
+  <section class="r-sec">
+    <h2>내 강점</h2>
+    <div class="r-recs">
+      {% for s in strength_profile.strengths[:6] %}
+      <div class="r-rec"><b>{{ s.name }}</b><small>{{ s.summary }}</small></div>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  {% if certs %}
+  <section class="r-sec">
+    <h2>자격증·어학</h2>
+    <table class="r-table">
+      <thead><tr><th>이름</th><th>점수·등급</th><th>취득일</th><th>발급 기관</th><th>{{ role_name }} 관련도</th></tr></thead>
+      <tbody>{% for v in certs %}{% set c = v.c %}<tr><td>{{ c.name }}</td><td>{{ c.score or '-' }}</td>
+        <td>{{ c.acquired or '-' }}</td><td>{{ c.issuer or '-' }}</td><td>{{ v.rel }}</td></tr>{% endfor %}</tbody>
+    </table>
+  </section>
+  {% endif %}
+
+  {% for cat, items in groups %}
+  <section class="r-sec">
+    <h2>{{ cat }} <small>{{ items|length }}</small></h2>
+    {% for e in items %}
+    <div class="r-item">
+      <div class="r-item-head"><b>{{ e.title }}</b>
+        <span class="r-meta">{% if e.organization and e.organization not in e.title %}{{ e.organization }} · {% endif %}{{ e.period }}</span></div>
+      <dl>
+        {% for f in e.TEXT_FIELDS if e[f] and f != 'keywords' %}<dt>{{ e.TEXT_LABELS[f] }}</dt><dd>{{ e[f] }}</dd>{% endfor %}
+        {% if e.keyword_list %}<dt>키워드</dt><dd>{{ e.keyword_list|join(' · ') }}</dd>{% endif %}
+      </dl>
+    </div>
+    {% endfor %}
+  </section>
+  {% endfor %}
+
+  <footer class="r-foot">GROWLY · 내 경험이 자라는 곳</footer>
+</main>
+<script>
+  // ?print=1 로 열면 바로 인쇄 창을 띄움
+  if (new URLSearchParams(location.search).get("print")) window.addEventListener("load", function () { setTimeout(window.print, 300); });
+</script>
+</body>
+</html>

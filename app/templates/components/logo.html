@@ -1,0 +1,27 @@
+{# GROWLY 로고: 에스프레소 원형 실(seal) + 가는 골드 링 + 미니멀 골드 새싹, 세리프 워드마크.
+   uid 는 같은 화면에 여러 번 쓸 때 그라디언트 id 충돌 방지용 #}
+{% macro logo_mark(size=32, uid='a') %}
+<svg class="logo-mark" width="{{ size }}" height="{{ size }}" viewBox="0 0 48 48" aria-hidden="true">
+  <defs>
+    <radialGradient id="gl-bg-{{ uid }}" cx="35%" cy="30%" r="80%">
+      <stop offset="0" stop-color="#4a3519"/><stop offset="1" stop-color="#1f150a"/>
+    </radialGradient>
+    <linearGradient id="gl-au-{{ uid }}" gradientUnits="userSpaceOnUse" x1="10" y1="38" x2="38" y2="10">
+      <stop offset="0" stop-color="#b9852b"/><stop offset=".45" stop-color="#e8c674"/>
+      <stop offset=".7" stop-color="#f7e6b5"/><stop offset="1" stop-color="#c9973a"/>
+    </linearGradient>
+  </defs>
+  <circle class="logo-disc" cx="24" cy="24" r="23" fill="url(#gl-bg-{{ uid }})"/>
+  <circle class="logo-ring" cx="24" cy="24" r="19.6" fill="none" stroke="url(#gl-au-{{ uid }})" stroke-width=".9" opacity=".85" pathLength="100"/>
+  <g class="logo-sprout">
+    <path d="M24 34.5V21.6" stroke="url(#gl-au-{{ uid }})" stroke-width="1.7" stroke-linecap="round" fill="none"/>
+    <path class="logo-leaf l" d="M24 27.2C21.6 27.4 17.4 26.2 16.2 21.4 20.4 20.8 23.4 23.3 24 27.2Z" fill="url(#gl-au-{{ uid }})"/>
+    <path class="logo-leaf r" d="M24 22.2C24.4 17.6 27.6 13.9 32.6 13.4 32.6 18.3 29.3 21.8 24 22.2Z" fill="url(#gl-au-{{ uid }})"/>
+    <path d="M19.6 34.6H28.4" stroke="url(#gl-au-{{ uid }})" stroke-width="1.1" stroke-linecap="round" opacity=".7"/>
+  </g>
+</svg>
+{% endmacro %}
+
+{% macro logo(size=32, uid='a') %}
+<span class="logo">{{ logo_mark(size, uid) }}<span class="logo-word">GROWLY</span></span>
+{% endmacro %}

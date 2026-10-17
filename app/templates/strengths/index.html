@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+{% from "components/macros.html" import csrf, empty %}
+{% block title %}강점 연결{% endblock %}
+
+{% macro upload_form(compact=False) %}
+<form method="post" action="{{ url_for('strengths.upload') }}" enctype="multipart/form-data">
+  {{ csrf() }}
+  <div class="formats"><span>PDF</span><span>DOCX</span><span>TXT</span></div>
+  <div class="row">
+    <div class="field" style="flex:1 1 300px"><input type="file" name="file" accept=".pdf,.docx,.txt,.md"></div>
+    <div class="field" style="flex:0 0 auto"><button class="btn" type="submit">올리고 분석하기</button></div>
+  </div>
+  <details class="box">
+    <summary>파일이 안 읽히면 결과 내용을 직접 붙여넣기</summary>
+    <textarea name="pasted" placeholder="강점 진단 결과지의 내용을 복사해 붙여넣어 주세요 (예: TOP 5 강점과 설명)"></textarea>
+  </details>
+  <p class="muted" style="font-size:.78rem;margin-top:8px">9WAY·갤럽 강점 등 진단 결과지를 올리면 강점 이름과 설명을 찾아 내 경험과 연결해요. 새로 올리면 이전 결과지는 바뀌어요.</p>
+</form>
+{% endmacro %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <span class="eyebrow">Strength × Experience</span>
+    <h1>강점 연결</h1>
+    <p>강점 진단 결과지를 올리면 내 강점이 실제로 드러난 경험을 찾아 자소서 소재로 이어 드려요.</p>
+  </div>
+</div>
+
+{% if not profile %}
+<section class="block reveal">
+  <div class="card strength-empty">
+    <div class="strength-empty-art" aria-hidden="true">✦</div>
+    <h2>내 강점 결과지를 올려 주세요</h2>
+    <p class="muted">아직 올린 결과지가 없어요. 경험이 {{ exp_count }}개 있어서 올리면 바로 연결해 드릴 수 있어요.</p>
+    {{ upload_form() }}
+  </div>
+</section>
+{% else %}
+
+{# ── 요약 ── #}
+<section class="block reveal">
+  <div class="card strength-hero">
+    <div>
+      <span class="eyebrow">My Strength Profile</span>
+      <div class="strength-chips">
+        {% for s in profile.strengths %}<span class="s-chip"><b>{{ s.rank or loop.index }}</b>{{ s.name }}</span>{% endfor %}
+        {% if not profile.strengths %}<span class="muted">강점 이름을 찾지 못했어요. AI 분석을 이용해 보세요.</span>{% endif %}
+      </div>
+      {% if profile.parsed.area %}<p class="s-line"><em>강점이 나타날 때</em>{{ profile.parsed.area }}</p>{% endif %}
+      {% if profile.parsed.role %}<p class="s-line"><em>강점 역할</em>{{ profile.parsed.role }}</p>{% endif %}
+      <p class="muted" style="font-size:.78rem;margin:8px 0 0">{{ profile.filename }} · {{ profile.created_at|localtime }}</p>
+    </div>
+    <div class="strength-actions">
+      <details class="box"><summary>새 결과지 올리기</summary>{{ upload_form(True) }}</details>
+      <p class="muted" style="font-size:.76rem;margin:0">새로 올려도 지금 결과지는 아래 '저장된 결과지'에 남아요.</p>
+    </div>
+  </div>
+
+  {# 저장된 강점 결과지: 불러오기 · 지우기 #}
+  <div class="card saved-results">
+    <div class="card-head"><h3>저장된 결과지 <small class="muted">{{ history|length }}개</small></h3>
+      <form method="post" action="{{ url_for('strengths.delete') }}" onsubmit="return confirm('저장된 강점 결과지를 모두 지울까요?')">
+        {{ csrf() }}<button class="btn ghost sm" type="submit">모두 지우기</button></form></div>
+    <ul class="upload-list">
+      {% for h in history %}
+      <li>
+        <div style="flex:1 1 240px"><b>{{ h.filename }}</b>{% if h.id == profile.id %} <span class="badge ai">사용 중</span>{% endif %}
+          <div class="muted" style="font-size:.78rem">{{ h.created_at|localtime }} · {{ h.strengths|map(attribute='name')|join(', ') or '강점 이름 없음' }}{% if h.ai_json %} · AI 분석 있음{% endif %}</div></div>
+        {% if h.id != profile.id %}
+        <form method="post" action="{{ url_for('strengths.activate', profile_id=h.id) }}" class="inline">
+          {{ csrf() }}<button class="btn secondary sm" type="submit">불러오기</button></form>
+        {% endif %}
+        <form method="post" action="{{ url_for('strengths.delete_one', profile_id=h.id) }}" class="inline" onsubmit="return confirm('이 결과지를 지울까요?')">
+          {{ csrf() }}<button class="btn ghost sm" type="submit">지우기</button></form>
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+</section>
+
+{# ── 01 강점별 경험 ── #}
+<section class="block reveal">
+  <div class="block-head"><div class="title"><span class="num">01</span><div><h2>강점이 드러난 내 경험</h2>
+    <p>강점마다 그 강점이 행동으로 나타난 경험을 찾았어요. 근거 단어를 보고 자소서 사례로 쓰세요.</p></div></div></div>
+  {% if linked %}
+  <div class="grid grid-3">
+    {% for s in linked %}
+    <article class="card strength-card">
+      <div class="s-head"><span class="s-rank">TOP {{ s.rank or loop.index }}</span><h3>{{ s.name }}</h3></div>
+      <p class="s-summary">{{ s.summary }}</p>
+      {% if s.definition %}<p class="clip" style="max-width:none">{{ s.definition }}</p>{% endif %}
+      <h4>이 강점이 드러난 경험</h4>
+      {% if s.matches %}
+      <ul class="s-matches">
+        {% for m in s.matches %}
+        <li><b>{{ m.title }}</b><span class="chips">{% for w in m.words %}<span class="chip">{{ w }}</span>{% endfor %}</span></li>
+        {% endfor %}
+      </ul>
+      <p class="s-tip">{{ s.tip }}</p>
+      {% else %}
+      <p class="muted" style="font-size:.84rem">아직 이 강점과 이어지는 경험을 찾지 못했어요. 경험의 역할·느낀점에 이 강점이 드러난 행동을 적어 보세요.</p>
+      {% endif %}
+    </article>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="card">{{ empty('연결할 강점이 없어요', '결과지에서 강점 이름을 찾지 못했어요. 아래 AI 분석을 쓰거나 결과 내용을 붙여넣어 다시 올려 주세요.') }}</div>
+  {% endif %}
+</section>
+
+{# ── 02 연결 지도 ── #}
+{% if mat and mat.cols %}
+<section class="block reveal">
+  <div class="block-head"><div class="title"><span class="num">02</span><div><h2>강점 × 경험 연결 지도</h2>
+    <p>색이 진할수록 그 경험에서 강점이 많이 드러나요. 여러 강점이 모인 경험은 자소서 대표 사례로 좋아요.</p></div></div></div>
+  <div class="card">
+    <div class="table-wrap">
+      <table class="heatmap">
+        <thead><tr><th></th>{% for e in mat.cols %}<th title="{{ e.title }}">{{ e.title if e.title|length <= 12 else e.title[:11] ~ '…' }}</th>{% endfor %}</tr></thead>
+        <tbody>
+          {% for r in mat.rows %}
+          <tr><th>{{ r.name }}</th>
+            {% for v in r.cells %}<td><span class="heat" style="--h:{{ v }}" title="{{ r.name }} × {{ mat.cols[loop.index0].title }}">{{ '●' if v >= 60 else ('•' if v > 0 else '') }}</span></td>{% endfor %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+{% endif %}
+
+{# ── 03 AI 강점 스토리 ── #}
+<section class="block reveal" id="ai">
+  <div class="block-head"><div class="title"><span class="num">03</span><div><h2>AI 강점 스토리</h2>
+    <p>결과지 전체와 내 경험을 함께 읽고 {{ role_name }} 자소서에서 밀고 갈 메시지를 정리해요.</p></div></div>
+    {% if ai_enabled %}
+    <form method="post" action="{{ url_for('strengths.ai_link') }}" data-ai-form>{{ csrf() }}<input type="hidden" name="role" value="{{ role }}">
+      <button class="btn sm" type="submit">✦ {{ '다시 분석하기' if ai else 'AI로 강점-경험 연결하기' }}</button></form>
+    {% else %}<small class="muted">.env 에 OPENAI_API_KEY 를 넣으면 쓸 수 있어요</small>{% endif %}
+  </div>
+  {% if ai %}
+  <div class="card ai-story">
+    {% if ai_stale %}<p class="badge warn" style="margin-bottom:10px">경험이나 직무가 바뀌었어요 · 지금 결과는 {{ ai_role_name }} 기준</p>{% endif %}
+    <p class="ai-headline">“{{ ai.headline }}”</p>
+    <p class="ai-core">{{ ai.core_message }}</p>
+    <div class="grid grid-2" style="margin-top:14px">
+      {% for s in ai.strengths %}
+      <div class="ai-strength">
+        <h3>{{ s.name }} <small class="muted">{{ s.summary }}</small></h3>
+        {% if s.experiences %}<ul>{% for x in s.experiences %}{% set e = exps.get(x.id) %}{% if e %}<li><b>{{ e.title }}</b> — {{ x.how }}</li>{% endif %}{% endfor %}</ul>{% endif %}
+        <p class="s-tip">{{ s.essay_tip }}</p>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% else %}
+  <div class="card">{{ empty('아직 AI 분석 전이에요', '위 버튼을 누르면 10~40초 뒤 강점별 근거 경험과 자소서 핵심 메시지가 나와요. 결과지와 경험 내용이 OpenAI로 전송돼요.') }}</div>
+  {% endif %}
+</section>
+{% endif %}
+{% endblock %}

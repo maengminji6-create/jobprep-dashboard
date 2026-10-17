@@ -1,0 +1,274 @@
+{% extends "base.html" %}
+{% from "components/macros.html" import csrf, meter, usage_badge, delete_button, empty, comment_box, ai_button, ring %}
+{% block title %}경험 분석{% endblock %}
+
+{% macro block_head(num, title, desc) %}
+<div class="block-head">
+  <div class="title"><span class="num">{{ num }}</span><div><h2>{{ title }}</h2><p>{{ desc }}</p></div></div>
+  {{ caller() if caller }}
+</div>
+{% endmacro %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <span class="eyebrow">My Growth Dashboard</span>
+    <h1>{{ current_user.name }}님의 경험 대시보드</h1>
+    <p>경험 {{ exps|length }}개 · 자격증·어학 {{ certs|length }}개{% if recs %} · 가장 잘 맞는 직무 <b>{{ recs[0].name }}</b>{% endif %}</p>
+  </div>
+  <div class="row" style="gap:8px">
+    <a class="btn secondary" href="{{ url_for('experiences.report', role=role) }}" target="_blank" rel="noopener">⤓ 내 이력 PDF로 저장</a>
+    <a class="btn" href="#tab-exp">＋ 경험 추가</a>
+  </div>
+</div>
+
+<nav class="section-nav" aria-label="섹션 바로가기">
+  <a href="#recs"><b>01</b>추천 직무</a>
+  <a href="#top3"><b>02</b>TOP 3</a>
+  <a href="#certs"><b>03</b>자격증·어학</a>
+  <a href="#charts"><b>04</b>한눈에 보기</a>
+  <a href="#browse"><b>05</b>종류별 모아보기</a>
+  <a href="#manage"><b>06</b>이력 추가·관리</a>
+</nav>
+
+{# ── 01 추천 직무 ── #}
+<section class="block reveal" id="recs">
+  {{ block_head('01', '나에게 맞는 직무', '직무를 고르지 않아도 모든 이력을 분석해 잘 맞는 직무를 추천해요. 카드를 누르면 그 직무 기준으로 바뀌어요.') }}
+  {% if recs %}
+  <div class="grid grid-3">
+    {% for r in recs %}
+    <a class="card rec-card {{ 'on' if r.code == role }}" href="{{ url_for('experiences.index', role=r.code) }}#top3">
+      <div class="rec-top">
+        <span class="rec-rank">추천 {{ loop.index }}</span>
+        {{ ring(r.score, '적합도') }}
+      </div>
+      <h3>{{ r.name }}</h3>
+      <p class="muted" style="font-size:.8rem;margin-bottom:8px">{{ r.group_name }}</p>
+      {% if r.experiences %}<p class="rec-why">근거 경험 · {{ r.experiences|join(', ') }}</p>{% endif %}
+      {% if r.cert_bonus %}<p class="rec-why rec-cert">자격증 +{{ r.cert_bonus }}{% if r.certs %} · {{ r.certs|join(', ') }}{% endif %}</p>{% endif %}
+      <div class="chips">{% for k in r.keywords %}<span class="chip">{{ k }}</span>{% endfor %}</div>
+      {% if r.code == role %}<span class="rec-now">지금 보는 직무</span>{% endif %}
+    </a>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="card">{{ empty('이력을 넣으면 추천 직무가 나타나요', '06 이력 추가·관리에서 경험정리 파일을 올리거나 경험을 직접 추가해 보세요.') }}</div>
+  {% endif %}
+
+  <details class="card picker-box" {{ 'open' if not auto_role and recs and role not in recs|map(attribute='code')|list }}>
+    <summary>다른 직무 직접 고르기 <span class="muted">· 지금: {{ group_name }} › <b>{{ role_name }}</b>{% if auto_role %} (자동 추천){% endif %}</span>
+      {% if not auto_role %}<a class="btn ghost sm" href="{{ url_for('experiences.index', auto=1) }}#recs" style="margin-left:auto">추천 1위로 돌아가기</a>{% endif %}</summary>
+    <div class="pill-links" aria-label="직군" style="margin-top:14px">
+      {% for g in groups %}
+        <a href="{{ url_for('experiences.index', group=g.code) }}#recs" class="{{ 'on' if g.code == group }}">{{ g.name }}</a>
+      {% endfor %}
+    </div>
+    <div class="pill-links roles" aria-label="직무">
+      {% for r in roles if r.group == group %}
+        <a href="{{ url_for('experiences.index', role=r.code) }}#top3" class="{{ 'on' if r.code == role }}">{{ r.name }}</a>
+      {% endfor %}
+    </div>
+  </details>
+</section>
+
+{# ── 02 TOP 3 ── #}
+<section class="block reveal" id="top3">
+  {% call block_head('02', role_name ~ ' TOP 3 경험', '이 직무에 가장 잘 맞는 경험 3개예요. 카드마다 자소서에서 어필할 포인트가 붙어 있어요.') %}
+    {% if top3 %}
+      {% if ai_enabled %}{{ ai_button(top3|map(attribute='id')|list, role, 'TOP 3 AI 코멘트 받기', 'top3', '') }}
+      {% else %}<small class="muted">.env 에 OPENAI_API_KEY 를 넣으면 AI 코멘트를 받을 수 있어요</small>{% endif %}
+    {% endif %}
+  {% endcall %}
+  {% if top3 %}
+  <div class="grid grid-3 top-grid">
+    {% for a in top3 %}{% set c = comments[a.id] %}
+    <article class="card top-card {{ 'first' if loop.first }}">
+      <div class="top-head">
+        <span class="top-rank">{{ '%02d' % loop.index }}</span>
+        {{ usage_badge(a.best_usage, a.best_usage_label ~ '용') }}
+      </div>
+      <h3>{{ a.title }}</h3>
+      <p class="muted" style="font-size:.78rem">{{ a.category }}{% if a.period %} · {{ a.period }}{% endif %}</p>
+      <div class="rings">{{ ring(a.roles[role].score, '직무 적합도') }}{{ ring(a.strength, '강점', 'soft') }}</div>
+      <div class="chips" style="margin-bottom:12px">
+        {% for h in a.roles[role].hits[:4] %}<span class="chip on">{{ h }}</span>{% endfor %}
+        {% for k in a.keywords[:2] %}<span class="chip">{{ k }}</span>{% endfor %}
+      </div>
+      <div class="top-tip">
+        <span class="badge {{ 'ai' if c.ai }}">{{ 'AI' if c.ai else '팁' }}</span>
+        <p>{{ (c.data.appeal_points or [c.data.summary])[0] }}</p>
+        <small>추천 문항 · {{ c.data.essay_question or a.question }}</small>
+      </div>
+      <details class="cmt"><summary>자소서 코멘트 전체 보기{% if c.ai and not c.fresh %} · 갱신 필요{% endif %}</summary>
+        {{ comment_box(c, a.id, role, ai_enabled, 'top3') }}</details>
+      <form method="post" action="{{ url_for('experiences.exclude', exp_id=a.id) }}" class="top-out">
+        {{ csrf() }}<input type="hidden" name="role" value="{{ role }}">
+        <button class="btn ghost sm" type="submit" title="이 직무 TOP 3에서 빼고 다음 순위를 올려요">✕ TOP 3에서 빼기</button></form>
+    </article>
+    {% endfor %}
+  </div>
+  {% elif exps %}
+  <div class="card">{{ empty(role_name ~ '와 바로 이어지는 경험이 아직 없어요', '01의 추천 직무를 눌러 보거나, 경험에 역할·키워드를 더 적어 보세요.') }}</div>
+  {% else %}
+  <div class="card">{{ empty('아직 등록된 이력이 없어요', '06 이력 추가·관리에서 경험정리 파일을 올리거나 경험을 직접 추가하면 분석이 시작돼요.') }}</div>
+  {% endif %}
+  {% if excluded %}
+  <div class="excluded">
+    <span class="muted">TOP 3에서 뺀 경험 ·</span>
+    {% for a in excluded %}
+    <form method="post" action="{{ url_for('experiences.include', exp_id=a.id) }}" class="inline">
+      {{ csrf() }}<input type="hidden" name="role" value="{{ role }}">
+      <button class="chip-btn" type="submit" title="다시 순위에 넣기">{{ a.title }} <span>↺ 되돌리기</span></button></form>
+    {% endfor %}
+  </div>
+  {% endif %}
+</section>
+
+{# ── 03 자격증·어학 ── #}
+<section class="block reveal" id="certs">
+  {% call block_head('03', '자격증·어학', '경험과 따로 관리해요. 자격증마다 ' ~ role_name ~ ' 관련도를 보여 주고, 관련 직무 적합도에 가산점으로 반영돼요.') %}
+    <a class="btn secondary sm" href="#tab-cert">＋ 자격증 추가</a>
+  {% endcall %}
+  {% if certs %}
+  <div class="grid grid-3">
+    {% for v in certs %}{% set c = v.c %}
+    <article class="card cert-card">
+      <div class="cert-top">
+        <div><h3>{{ c.name }}</h3>
+          <p class="muted" style="font-size:.8rem;margin:2px 0 0">{{ [c.score, c.acquired, c.issuer]|select|join(' · ') or '점수·취득일 미입력' }}</p></div>
+        {{ ring(v.rel, '관련도', 'soft' if v.rel < 50 else '') }}
+      </div>
+      <p class="cert-why">{{ v.reason }}{% if not v.known %} <span class="badge">추정</span>{% endif %}</p>
+      {% if v.top %}<div class="chips">{% for name, score in v.top %}<span class="chip {{ 'on' if loop.first }}">{{ name }} {{ score }}</span>{% endfor %}</div>{% endif %}
+      <div class="exp-card-foot">
+        <span style="margin-left:auto;white-space:nowrap"><a class="btn ghost sm" href="{{ url_for('experiences.edit_certificate', cert_id=c.id) }}">수정</a>{{ delete_button(url_for('experiences.delete_certificate', cert_id=c.id)) }}</span>
+      </div>
+    </article>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="card">{{ empty('아직 자격증·어학이 없어요', '국제무역사, 무역영어, TOEIC·OPIc 등을 추가하면 관련 직무 적합도에 반영돼요.') }}</div>
+  {% endif %}
+</section>
+
+{# ── 04 한눈에 보기 ── #}
+{% if exps %}
+<section class="block reveal" id="charts">
+  {{ block_head('04', '한눈에 보기', '왼쪽은 직무별 내 적합도, 오른쪽은 모든 경험의 ' ~ role_name ~ ' 적합도와 강점이에요.') }}
+  <div class="grid grid-2">
+    <div class="card">
+      <div class="card-head"><h3>직무별 내 적합도</h3><small>잘 맞는 경험 3개 평균 + 자격증 가산점</small></div>
+      <div class="chart-box tall"><canvas id="radarChart" aria-label="직무별 적합도 레이더 차트"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-head"><h3>경험별 적합도 · 강점</h3><small>{{ exps|length }}개 전체</small></div>
+      <div class="chart-box" style="height:{{ [exps|length * 30 + 60, 360]|max }}px"><canvas id="barChart"></canvas></div>
+    </div>
+  </div>
+</section>
+
+{# ── 05 종류별 모아보기 ── #}
+<section class="block reveal" id="browse">
+  {{ block_head('05', '종류별 모아보기', '인턴·아르바이트·프로젝트처럼 종류를 골라 내 이력을 모아 볼 수 있어요.') }}
+  <div class="filter-chips" role="tablist" aria-label="이력 종류">
+    <button type="button" data-filter="all" aria-pressed="true">전체 <b>{{ exps|length }}</b></button>
+    {% for c, n in cat_counts.items() %}<button type="button" data-filter="{{ c }}" aria-pressed="false">{{ c }} <b>{{ n }}</b></button>{% endfor %}
+  </div>
+  <div class="exp-grid">
+    {% for e in exps|sort(attribute='id') %}{% set a = analyses[e.id] %}{% set c = comments[e.id] %}
+    <article class="card exp-card" data-category="{{ e.category }}">
+      <div class="exp-card-head">
+        <span class="badge">{{ e.category }}</span>
+        <span class="muted" style="font-size:.76rem">{{ e.period }}</span>
+      </div>
+      <h3>{{ e.title }}</h3>
+      {% if e.organization and e.organization not in e.title %}<p class="muted" style="font-size:.78rem;margin:0">{{ e.organization }}</p>{% endif %}
+      {% if e.role %}<div class="clip">{{ e.role }}</div>{% endif %}
+      <div style="margin:10px 0 8px"><small class="muted">{{ role_name }} 적합도</small>{{ meter(a.roles[role].score) }}</div>
+      <div class="chips">{% for k in e.keyword_list[:4] %}<span class="chip">{{ k }}</span>{% endfor %}</div>
+      <div class="exp-card-foot">
+        <details class="cmt"><summary>{{ '✦ AI 코멘트' if c.ai else '코멘트' }}{% if c.ai and not c.fresh %} · 갱신 필요{% endif %}</summary>
+          {{ comment_box(c, e.id, role, ai_enabled, 'browse') }}</details>
+        <span style="margin-left:auto;white-space:nowrap"><a class="btn ghost sm" href="{{ url_for('experiences.edit', exp_id=e.id) }}">수정</a>{{ delete_button(url_for('experiences.delete', exp_id=e.id)) }}</span>
+      </div>
+    </article>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+{# ── 06 이력 추가·관리 ── #}
+<section class="block reveal" id="manage">
+  {{ block_head('06', '이력 추가·관리', '경험·자격증을 추가하고, 지금 이력을 저장해 두었다가 언제든 다시 불러올 수 있어요.') }}
+  {% include "experiences/_manage.html" %}
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// 05 탭: 버튼 클릭 또는 주소의 #tab-이름 으로 열기
+(function () {
+  var buttons = document.querySelectorAll(".tabs [data-tab]");
+  function open(name, scroll) {
+    var found = false;
+    buttons.forEach(function (b) {
+      var on = b.dataset.tab === name; found = found || on;
+      b.setAttribute("aria-selected", on ? "true" : "false");
+      document.getElementById("tab-" + b.dataset.tab).hidden = !on;
+    });
+    if (found && scroll) document.getElementById("manage").scrollIntoView();
+  }
+  buttons.forEach(function (b) { b.addEventListener("click", function () { open(b.dataset.tab); }); });
+  function fromHash() { var h = location.hash; if (h.indexOf("#tab-") === 0) open(h.slice(5), true); }
+  window.addEventListener("hashchange", fromHash); fromHash();
+})();
+// 04 종류별 필터
+(function () {
+  var chips = document.querySelectorAll(".filter-chips [data-filter]");
+  chips.forEach(function (chip) {
+    chip.addEventListener("click", function () {
+      var f = chip.dataset.filter;
+      chips.forEach(function (c) { c.setAttribute("aria-pressed", c === chip ? "true" : "false"); });
+      document.querySelectorAll(".exp-card").forEach(function (card) {
+        card.hidden = !(f === "all" || card.dataset.category === f);
+      });
+    });
+  });
+})();
+// 기존 경험을 고르면 '경험 이름'은 필요 없음
+(function () {
+  var sel = document.getElementById("target_id"), title = document.getElementById("title");
+  if (!sel) return;
+  function sync() { title.disabled = !!sel.value; title.placeholder = sel.value ? "고른 경험에 내용이 덧붙여져요" : "예: LG 호주 법인 인턴 (같은 이름이 있으면 그 경험에 합쳐져요)"; }
+  sel.addEventListener("change", sync); sync();
+})();
+</script>
+{% if exps %}
+<script>
+const C = {{ chart|tojson }};
+const P = window.PALETTE;
+const sel = C.radar_selected;
+new Chart(document.getElementById("radarChart"), {
+  type: "radar",
+  data: { labels: C.radar_labels, datasets: [{ label: "적합도", data: C.radar_values, borderColor: P.main, borderWidth: 2.5,
+          backgroundColor: P.mainFill,
+          pointBackgroundColor: C.radar_values.map((_, i) => i === sel ? P.coral : P.main),
+          pointRadius: C.radar_values.map((_, i) => i === sel ? 7 : 4) }] },
+  options: { maintainAspectRatio: false,
+    scales: { r: { min: 0, max: 100, ticks: { display: false, stepSize: 20 }, grid: { color: P.grid }, angleLines: { color: P.grid },
+      pointLabels: { font: (ctx) => ({ size: 11, weight: ctx.index === sel ? "700" : "400" }),
+                     color: (ctx) => ctx.index === sel ? P.labelOn : P.label } } },
+    plugins: { legend: { display: false } } }
+});
+new Chart(document.getElementById("barChart"), {
+  type: "bar",
+  data: { labels: C.bar_labels, datasets: [
+    { label: "직무 적합도", data: C.bar_fit, backgroundColor: P.main, barPercentage: .8, categoryPercentage: .7 },
+    { label: "강점", data: C.bar_strength, backgroundColor: P.light, barPercentage: .8, categoryPercentage: .7 } ] },
+  options: { maintainAspectRatio: false, indexAxis: "y",
+    scales: { x: { min: 0, max: 100, grid: { color: P.grid } }, y: { grid: { display: false }, ticks: { font: { size: 11 } } } },
+    plugins: { legend: { position: "top", align: "end" } } }
+});
+</script>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% from "components/macros.html" import csrf, delete_button %}
+{% block title %}{{ rec.company }} 지원 기록{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><span class="eyebrow">Application Archive</span>
+    <h1>{{ rec.company }}</h1>
+    <p>{{ rec.position or '직무 미입력' }}{% if rec.role_code in role_map %} · {{ role_map[rec.role_code].name }}{% endif %}</p></div>
+  <div class="row" style="gap:8px">
+    <a class="btn secondary" href="{{ url_for('applications.index') }}">← 보관함</a>
+    <a class="btn" href="{{ url_for('applications.edit', rec_id=rec.id) }}">수정</a>
+  </div>
+</div>
+
+<section class="block reveal">
+  <div class="app-summary">
+    <form method="post" action="{{ url_for('applications.set_status', rec_id=rec.id) }}" class="status-steps">
+      {{ csrf() }}
+      {% for s in ['작성 중', '제출 완료', '서류 합격', '면접 진행', '최종 합격', '불합격'] %}
+      <button type="submit" name="status" value="{{ s }}" class="{{ 'on' if s == rec.status }}">{{ s }}</button>
+      {% endfor %}
+    </form>
+    <div class="app-facts">
+      {% if rec.applied_at %}<span>제출일 <b>{{ rec.applied_at }}</b></span>{% endif %}
+      {% if rec.deadline %}<span>마감일 <b>{{ rec.deadline }}</b></span>{% endif %}
+      <span>문항 <b>{{ rec.qa|length }}</b> · 총 <b>{{ '{:,}'.format(rec.total_chars) }}</b>자</span>
+      {% if rec.url %}<a href="{{ rec.url }}" target="_blank" rel="noopener noreferrer">공고 원문 ↗</a>{% endif %}
+      {% if posting %}<a href="{{ url_for('experiences.posting_detail', pa_id=posting.id) }}">공고 매칭 분석 보기 →</a>{% endif %}
+    </div>
+  </div>
+</section>
+
+<section class="block reveal">
+  <div class="block-head"><div class="title"><span class="num">01</span><div><h2>기업 정보</h2><p>면접 전에 다시 보기</p></div></div></div>
+  <div class="grid grid-3">
+    <div class="card"><h3>사업·제품·최근 이슈</h3><p class="pre">{{ rec.company_info or '아직 정리하지 않았어요.' }}</p></div>
+    <div class="card"><h3>인재상·핵심가치</h3><p class="pre">{{ rec.talent or '아직 정리하지 않았어요.' }}</p></div>
+    <div class="card"><h3>메모</h3><p class="pre">{{ rec.notes or '메모가 없어요.' }}</p></div>
+  </div>
+</section>
+
+<section class="block reveal">
+  <div class="block-head"><div class="title"><span class="num">02</span><div><h2>제출한 자기소개서</h2>
+    <p>문항별 답변과 글자 수, 답변에 쓴 내 경험을 함께 보여 드려요.</p></div></div>
+    {% if all_used %}<div class="chips"><span class="muted" style="font-size:.8rem">이 자소서에 쓴 경험 ·</span>{% for e in all_used %}<span class="chip on">{{ e.title }}</span>{% endfor %}</div>{% endif %}
+  </div>
+  {% for item in rec.qa %}
+  <article class="card qa-view">
+    <div class="qa-head"><span class="qa-n">Q{{ loop.index }}</span><h3>{{ item.q or '(문항 없음)' }}</h3>
+      {% set n = item.a|replace('\n', '')|length %}
+      <span class="qa-len {{ 'over' if item.limit and n > item.limit|int }}">{{ '{:,}'.format(n) }}자{% if item.limit %} / {{ item.limit }}자{% endif %}</span></div>
+    <p class="pre">{{ item.a or '(답변 없음)' }}</p>
+    {% if used[loop.index0] %}<div class="chips" style="margin-top:10px"><span class="muted" style="font-size:.78rem">쓴 경험 ·</span>{% for e in used[loop.index0] %}<span class="chip">{{ e.title }}</span>{% endfor %}</div>{% endif %}
+  </article>
+  {% else %}
+  <div class="card"><p class="muted">저장한 문항이 없어요. 수정에서 문항과 답변을 추가하세요.</p></div>
+  {% endfor %}
+</section>
+
+<div style="text-align:right">{{ delete_button(url_for('applications.delete', rec_id=rec.id), '이 지원 기록 지우기') }}</div>
+{% endblock %}

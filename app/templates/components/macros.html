@@ -1,0 +1,52 @@
+{% macro csrf() %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endmacro %}
+
+{% macro meter(value, color=None) %}
+<div class="score"><div class="meter" style="flex:1"><i style="width:{{ value }}%;{% if color %}background:{{ color }}{% endif %}"></i></div><b>{{ value }}</b></div>
+{% endmacro %}
+
+{% macro usage_badge(code, label) %}<span class="badge usage-{{ code }}">{{ label }}</span>{% endmacro %}
+
+{% macro delete_button(action, label='삭제') %}
+<form method="post" action="{{ action }}" class="inline" onsubmit="return confirm('정말 삭제할까요?')">
+  {{ csrf() }}<button class="btn ghost sm" type="submit">{{ label }}</button>
+</form>
+{% endmacro %}
+
+{% macro empty(title, text) %}
+<div class="empty"><b>{{ title }}</b>{{ text }}</div>
+{% endmacro %}
+
+{% macro ai_button(exp_ids, role, label, anchor='top3', style='secondary') %}
+<form method="post" action="{{ url_for('experiences.make_comments') }}" class="inline" data-ai-form>
+  {{ csrf() }}<input type="hidden" name="role" value="{{ role }}"><input type="hidden" name="anchor" value="{{ anchor }}">
+  {% for i in exp_ids %}<input type="hidden" name="exp_id" value="{{ i }}">{% endfor %}
+  <button class="btn {{ style }} sm" type="submit">✦ {{ label }}</button>
+</form>
+{% endmacro %}
+
+{% macro comment_box(view, exp_id, role, ai_enabled, anchor='top3') %}
+{% set c = view.data %}
+<div class="comment-box {{ 'is-ai' if view.ai }}">
+  <div class="comment-head">
+    <span class="badge {{ 'ai' if view.ai else '' }}">{{ 'AI 코멘트' if view.ai else '기본 코멘트' }}</span>
+    {% if view.ai and not view.fresh %}<span class="badge warn">경험 내용이 바뀌었어요</span>{% endif %}
+    {% if c.summary %}<b>{{ c.summary }}</b>{% endif %}
+    <span style="margin-left:auto">
+      {% if ai_enabled %}{{ ai_button([exp_id], role, '다시 받기' if view.ai else 'AI 코멘트 받기', anchor, 'ghost') }}{% endif %}
+    </span>
+  </div>
+  {% if c.appeal_points %}<ul class="points">{% for p in c.appeal_points %}<li>{{ p }}</li>{% endfor %}</ul>{% endif %}
+  <div class="comment-meta">
+    {% if c.essay_question %}<span><em>추천 문항</em>{{ c.essay_question }}</span>{% endif %}
+    {% if c.improve %}<span><em>보완하면 좋은 점</em>{{ c.improve }}</span>{% endif %}
+  </div>
+  {% if c.opening_sentence %}<p class="opening">“{{ c.opening_sentence }}”</p>{% endif %}
+</div>
+{% endmacro %}
+
+{# 0–100 점수를 동그란 게이지로. kind='soft' 는 연한 옐로(강점) #}
+{% macro ring(value, label='', kind='', size='') %}
+<div class="ring {{ kind }} {{ size }}" style="--v:{{ value or 0 }}" role="img" aria-label="{{ label }} {{ value }}점">
+  <span class="ring-num">{{ value or 0 }}</span>{% if label %}<span class="ring-label">{{ label }}</span>{% endif %}
+</div>
+{% endmacro %}
