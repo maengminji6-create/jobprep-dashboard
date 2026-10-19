@@ -12,7 +12,9 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="field"><label for="email">이메일</label><input id="email" type="email" name="email" required autofocus></div>
       <div class="field"><label for="password">비밀번호</label><input id="password" type="password" name="password" required></div>
-      <div class="field"><label style="display:flex;gap:6px;align-items:center"><input type="checkbox" name="remember"> 로그인 유지</label></div>
+      <div class="field" style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+        <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" name="remember"> 로그인 유지</label>
+        <a href="{{ url_for('auth.forgot_password') }}" style="font-size:.86rem">비밀번호를 잊었나요?</a></div>
       <button class="btn" type="submit" style="width:100%;justify-content:center">로그인</button>
     </form>
     {% if config.ALLOW_SIGNUP %}<p class="muted" style="margin-top:14px">계정이 없나요? <a href="{{ url_for('auth.register') }}">회원가입</a></p>{% endif %}

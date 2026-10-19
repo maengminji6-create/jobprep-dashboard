@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% from "components/logo.html" import logo %}
+{% block title %}새 비밀번호{% endblock %}
+{% block auth_content %}
+<meta name="referrer" content="no-referrer">
+<div class="auth-wrap">
+  <div class="card auth-card">
+    <div style="margin-bottom:14px">{{ logo(40, 'reset') }}</div>
+    <h1>새 비밀번호<br>정하기</h1>
+    <p class="muted">8자 이상으로 정해 주세요. 바꾸면 이 링크는 더 이상 쓸 수 없어요.</p>
+    {% include "components/flash.html" %}
+    <form method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="field"><label for="password">새 비밀번호</label><input id="password" type="password" name="password" minlength="8" required autofocus autocomplete="new-password"></div>
+      <div class="field"><label for="password2">새 비밀번호 확인</label><input id="password2" type="password" name="password2" minlength="8" required autocomplete="new-password"></div>
+      <button class="btn" type="submit" style="width:100%;justify-content:center">비밀번호 바꾸기</button>
+    </form>
+  </div>
+</div>
+{% endblock %}
