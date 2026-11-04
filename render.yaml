@@ -22,20 +22,6 @@ services:
         sync: false
       - key: AI_MODEL
         value: gpt-5.4-mini
-      - key: APP_BASE_URL        # 배포 주소(예: https://growly.onrender.com) — 비밀번호 재설정 메일 링크에 사용
-        sync: false
-      - key: MAIL_SERVER         # 비밀번호 찾기 메일용 SMTP(선택). 값은 Render 대시보드에서 입력
-        sync: false
-      - key: MAIL_PORT
-        value: "587"
-      - key: MAIL_USERNAME
-        sync: false
-      - key: MAIL_PASSWORD
-        sync: false
-      - key: MAIL_FROM
-        sync: false
-      - key: ALLOW_SIGNUP        # 내 계정을 만든 뒤 0 으로 바꾸면 다른 사람은 가입 불가
-        value: "1"
 
 
 databases:

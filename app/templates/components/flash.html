@@ -1,5 +1,10 @@
+{# 알림은 화면 아래 오른쪽에 잠깐 떴다 사라지는 토스트(app.js) — 본문을 밀어내지 않음 #}
 {% with messages = get_flashed_messages(with_categories=true) %}
-  {% for category, message in messages %}
-    <div class="flash {{ category if category in ['success','error','info'] else 'info' }}" role="status">{{ message }}</div>
-  {% endfor %}
+  {% if messages %}
+  <div class="toasts" role="status" aria-live="polite">
+    {% for category, message in messages %}
+      <div class="flash {{ category if category in ['success','error','info'] else 'info' }}">{{ message }}</div>
+    {% endfor %}
+  </div>
+  {% endif %}
 {% endwith %}

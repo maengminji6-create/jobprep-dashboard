@@ -24,16 +24,16 @@ Flask로 만든 경험정리 분석 대시보드입니다. 내 이력(엑셀·�
    ```
 3. `.env`를 열어 `SECRET_KEY`에 임의의 긴 문자열을 넣습니다.
    (`python -c "import secrets; print(secrets.token_hex(32))"` 결과를 붙여넣기)
-4. DB를 만들고 로그인용 데모 계정을 만듭니다(가상 데이터는 넣지 않아요).
+4. DB를 만듭니다.
    ```bash
    flask db upgrade
-   flask seed-demo
    ```
 5. 실행: VS Code로 폴더를 열면 **대시보드 실행 (자동 새로고침)** 작업이 서버를 자동으로 켭니다(처음 한 번 '자동 작업 허용'을 눌러 주세요).
    직접 켤 때는 터미널에서 `flask run --debug`.
    개발 모드에서는 파일을 저장하면 열린 브라우저 화면이 자동으로 새로고침돼요(VS Code 자동 저장 켜짐).
-6. 브라우저에서 http://127.0.0.1:5000 접속 → `demo@tradeready.local` / `demo1234` 로 로그인
-   (본인 계정은 회원가입으로 따로 만드세요.)
+6. 브라우저에서 http://127.0.0.1:5000 접속 — 로그인 없이 바로 내 대시보드가 열려요.
+   기록은 `instance/dev.db`에 저장돼 앱을 껐다 켜도 그대로 남아요(이 파일을 지우면 기록도 사라짐).
+   로컬에서는 `.env`의 `OWNER_EMAIL`에 내 계정 이메일을 적으면 그 계정으로 바로 들어가요(배포에서는 무시).
 
 ## 2. 화면 구성
 
@@ -77,7 +77,8 @@ Flask로 만든 경험정리 분석 대시보드입니다. 내 이력(엑셀·�
 - **AI 코멘트**: `app/integrations/ai_client.py`에서만 OpenAI API를 부릅니다. 버튼을 눌렀을 때만 호출하고 결과는 DB에 저장해 다시 부르지 않아요.
 
 - **공고 링크 분석**: 사용자가 넣은 링크 1건만 그 자리에서 읽습니다(사설 IP 차단). 로그인·앱 전용 공고는 본문 붙여넣기나 캡처 이미지 올리기를 쓰세요. 공고 이미지는 분석할 때만 받아 AI에 보내고 저장하지 않습니다(읽어 낸 글과 이미지 주소만 저장).
-- **비밀번호 찾기**: 로그인 화면의 '비밀번호를 잊었나요?' → 가입 이메일로 재설정 링크(30분 유효, 1번만 사용, 비밀번호가 바뀌면 이전 링크 무효). 가입 여부는 알려 주지 않고, 같은 이메일은 60초·같은 IP는 10분에 5번까지만 보냅니다. 메일은 `.env`의 `MAIL_SERVER` 등을 채워야 나가요(Gmail이면 smtp.gmail.com·587·Google '앱 비밀번호'). 비워 두면 개발 모드(`flask run --debug`)에서만 링크가 서버 터미널에 찍혀요. 배포에서는 링크 주소로 `APP_BASE_URL`을 꼭 넣으세요(요청 Host 헤더는 믿지 않음).
+- **로그인 없는 개인 공간**: 처음 들어온 브라우저마다 개인 계정을 자동으로 만들고 오래 가는 쿠키(접속할 때마다 400일 연장)로 기억해요(`app/auth/`). 남의 기록은 볼 수 없어요.
+  쿠키를 지우거나 다른 기기에서 열 때는 상단 이름 → **내 공간**에서 만든 '기록 열쇠'로 내 공간을 다시 열어요. 열쇠는 해시로만 저장돼 만들 때 한 번만 보여요.
 
 ## 4. 자주 쓰는 명령
 
@@ -95,8 +96,8 @@ flask db upgrade           # DB에 적용
 1. GitHub에 올립니다(`.env`, `instance/`는 `.gitignore`로 제외됨).
 2. Render 대시보드에서 **New → Blueprint**로 이 저장소를 연결하면 `render.yaml`대로 웹 서비스 + PostgreSQL이 만들어집니다.
 3. `SECRET_KEY`는 자동 생성되고 `DATABASE_URL`은 자동 연결됩니다. `OPENAI_API_KEY`는 Render 대시보드의 Environment에 직접 넣으세요.
-   배포 DB는 비어 있으니 회원가입으로 **내 계정**을 만들고 엑셀을 다시 올리세요. 그다음 `ALLOW_SIGNUP`을 `0`으로 바꾸면 다른 사람은 가입할 수 없어요
-   (로그인이 없으면 주소를 아는 누구나 내 이력을 보고 내 OpenAI 크레딧을 쓸 수 있으니 로그인은 꼭 유지하세요).
+   배포 링크로 들어온 사람은 각자 자기 공간만 써요. 단, AI 코멘트는 내 `OPENAI_API_KEY`로 호출되니 사용량을 확인하세요.
+   `SECRET_KEY`가 바뀌면 모든 방문자의 쿠키가 무효가 되니(기록 열쇠로는 다시 열 수 있음) 바꾸지 마세요.
 4. 배포 시 `flask db upgrade`가 먼저 실행되어 테이블이 생깁니다.
 
 무료 웹 서비스는 쉬는 동안 잠들 수 있지만 데이터는 PostgreSQL에 있어 사라지지 않습니다.
@@ -111,9 +112,8 @@ jobprep-dashboard/
 │   ├── config.py            # dev / test / prod 설정 (환경변수에서 읽음)
 │   ├── extensions.py        # db, migrate, login_manager, csrf
 │   ├── models.py            # 모든 모델 import (마이그레이션용)
-│   ├── cli.py               # flask seed-demo
 │   ├── core/                # 공통: 믹스인, 내 데이터만 조회(scoping), 무역직무 사전, 개발용 자동 새로고침
-│   ├── auth/                # 회원가입·로그인·비밀번호 찾기
+│   ├── auth/                # 로그인 없는 개인 공간 · 기록 열쇠
 │   ├── applications/        # 자소서 보관함: 지원 기록·자소서·기업 정보, 비교
 │   ├── strengths/           # 강점 결과지 파싱·경험 연결(services), 강점 연결 화면
 │   ├── experiences/         # 파일 파싱(parser), 직무 분석(analyzer), 추가·업데이트·코멘트(services), 공고 매칭(posting)
@@ -121,7 +121,6 @@ jobprep-dashboard/
 │   ├── templates/           # 화면
 │   └── static/              # css, js, vendor/chart.umd.js
 ├── migrations/              # DB 스키마 변경 이력
-├── scripts/seed_demo.py     # 로그인용 데모 계정
 ├── samples/                 # 업로드 테스트용 샘플(.docx)과 엑셀 양식(.xlsx)
 ├── tests/                   # pytest
 ├── .vscode/                 # 실행 설정, 권장 확장

@@ -162,3 +162,12 @@ def test_reupload_updates_instead_of_duplicating(auth_client, user):
     exps = db.session.query(Experience).filter_by(user_id=user.id).all()
     assert len(exps) == 1
     assert exps[0].role == "FCL 부킹\n운임 견적 비교" and exps[0].keyword_list == ["꼼꼼함", "책임감"]
+
+
+def test_split_by_title_then_period_line():
+    """PDF처럼 제목 표시가 없어도 '경험 이름 / 다음 줄 기간' 형식이면 나눔(일 단위 날짜 포함)."""
+    text = ("LG 호주 법인 인턴\n2025.04.22. ~ 2025.08.21.\n바이어 메일 응대와 선적 일정 관리\n\n"
+            "무역 동아리 회장\n2024.03 ~ 2024.12\n해외 바이어 상담 모의 대회 기획\n")
+    items = split_experiences(text)
+    assert [i["title"] for i in items] == ["LG 호주 법인 인턴", "무역 동아리 회장"]
+    assert items[0]["period"] == "2025.04.22.~2025.08.21."

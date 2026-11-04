@@ -12,15 +12,44 @@
 {% block content %}
 <div class="page-head">
   <div>
-    <span class="eyebrow">My Growth Dashboard</span>
+    <span class="eyebrow">Dashboard</span>
     <h1>{{ current_user.name }}님의 경험 대시보드</h1>
-    <p>경험 {{ exps|length }}개 · 자격증·어학 {{ certs|length }}개{% if recs %} · 가장 잘 맞는 직무 <b>{{ recs[0].name }}</b>{% endif %}</p>
+    <p>쌓은 경험으로 나에게 맞는 직무를 찾아요.</p>
   </div>
-  <div class="row" style="gap:8px">
-    <a class="btn secondary" href="{{ url_for('experiences.report', role=role) }}" target="_blank" rel="noopener">⤓ 내 이력 PDF로 저장</a>
+  <div class="row" style="gap:10px">
+    <a class="btn secondary" href="#tab-file">⤒ 파일 올리기</a>
+    <a class="btn secondary" href="{{ url_for('experiences.report', role=role) }}" target="_blank" rel="noopener">⤓ 이력 PDF</a>
     <a class="btn" href="#tab-exp">＋ 경험 추가</a>
   </div>
 </div>
+
+{# 요약 타일: 시계·날짜 / 경험 수 / 자격증 수 / 추천 직무 #}
+<section class="overview">
+  <div class="card tile clock-tile">
+    <div class="clock">
+      <svg viewBox="0 0 100 100" data-clock aria-hidden="true">
+        <g class="ticks"><line x1="50" y1="9" x2="50" y2="14"/><line x1="91" y1="50" x2="86" y2="50"/><line x1="50" y1="91" x2="50" y2="86"/><line x1="9" y1="50" x2="14" y2="50"/></g>
+        <line class="hand h" x1="50" y1="50" x2="50" y2="29"/>
+        <line class="hand m" x1="50" y1="50" x2="50" y2="17"/>
+        <circle cx="50" cy="50" r="2.4"/>
+      </svg>
+    </div>
+    <div class="clock-date"><small>Today</small><b data-today>—</b></div>
+  </div>
+  <a class="card tile kpi" href="#browse">
+    <span class="kpi-label"><i class="dot sage"></i>경험</span>
+    <span class="kpi-value"><b>{{ exps|length }}</b>개</span>
+  </a>
+  <a class="card tile kpi" href="#certs">
+    <span class="kpi-label"><i class="dot rose"></i>자격증·어학</span>
+    <span class="kpi-value"><b>{{ certs|length }}</b>개</span>
+  </a>
+  <a class="card tile kpi" href="#recs">
+    <span class="kpi-label"><i class="dot slate"></i>추천 직무</span>
+    {% if recs %}<span class="kpi-value kpi-text"><b>{{ recs[0].name }}</b></span><small>적합도 {{ recs[0].score }}</small>
+    {% else %}<span class="kpi-value kpi-text"><b>—</b></span><small>이력을 넣으면 나타나요</small>{% endif %}
+  </a>
+</section>
 
 <nav class="section-nav" aria-label="섹션 바로가기">
   <a href="#recs"><b>01</b>추천 직무</a>
@@ -256,7 +285,7 @@ new Chart(document.getElementById("radarChart"), {
           pointRadius: C.radar_values.map((_, i) => i === sel ? 7 : 4) }] },
   options: { maintainAspectRatio: false,
     scales: { r: { min: 0, max: 100, ticks: { display: false, stepSize: 20 }, grid: { color: P.grid }, angleLines: { color: P.grid },
-      pointLabels: { font: (ctx) => ({ size: 11, weight: ctx.index === sel ? "700" : "400" }),
+      pointLabels: { padding: 8, font: (ctx) => ({ size: 12, weight: ctx.index === sel ? "700" : "500" }),
                      color: (ctx) => ctx.index === sel ? P.labelOn : P.label } } },
     plugins: { legend: { display: false } } }
 });
@@ -266,7 +295,7 @@ new Chart(document.getElementById("barChart"), {
     { label: "직무 적합도", data: C.bar_fit, backgroundColor: P.main, barPercentage: .8, categoryPercentage: .7 },
     { label: "강점", data: C.bar_strength, backgroundColor: P.light, barPercentage: .8, categoryPercentage: .7 } ] },
   options: { maintainAspectRatio: false, indexAxis: "y",
-    scales: { x: { min: 0, max: 100, grid: { color: P.grid } }, y: { grid: { display: false }, ticks: { font: { size: 11 } } } },
+    scales: { x: { min: 0, max: 100, grid: { color: P.grid } }, y: { grid: { display: false }, ticks: { font: { size: 12 }, color: P.label } } },
     plugins: { legend: { position: "top", align: "end" } } }
 });
 </script>

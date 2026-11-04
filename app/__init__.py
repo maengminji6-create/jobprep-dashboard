@@ -26,6 +26,8 @@ def _nav_key(endpoint: str) -> str:
         return "strengths"
     if endpoint.startswith("applications."):
         return "applications"
+    if endpoint.startswith("auth."):
+        return ""  # 내 공간: 메뉴에 없음
     return "experiences"
 
 
@@ -62,9 +64,6 @@ def create_app(config_name: str | None = None) -> Flask:
     from .core.errors import register_error_handlers
     register_error_handlers(app)
 
-    from .cli import register_cli
-    register_cli(app)
-
     if config_name == "dev":
         from .core.devreload import register_dev_reload
         register_dev_reload(app)
@@ -78,6 +77,9 @@ def create_app(config_name: str | None = None) -> Flask:
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
         return dt.astimezone().strftime(fmt)
+
+    from .core.text_format import text_blocks
+    app.add_template_filter(text_blocks, "blocks")
 
     @app.template_filter("highlight")
     def highlight(text, exp_words=None, str_words=None):

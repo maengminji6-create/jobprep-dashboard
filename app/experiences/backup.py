@@ -47,9 +47,9 @@ def save_snapshot(name: str, data: dict | None = None) -> Snapshot:
 
 
 def validate(data) -> dict:
-    """올린 파일이 GROWLY 저장본인지 확인하고, 필드를 정리한 dict 를 돌려줍니다."""
+    """올린 파일이 CAIRN 저장본인지 확인하고, 필드를 정리한 dict 를 돌려줍니다."""
     if not isinstance(data, dict) or data.get("format") != FORMAT:
-        raise ValueError("GROWLY에서 내려받은 저장본(.json) 파일이 아니에요.")
+        raise ValueError("CAIRN에서 내려받은 저장본(.json) 파일이 아니에요.")
     exps, certs = data.get("experiences") or [], data.get("certificates") or []
     if not isinstance(exps, list) or not isinstance(certs, list):
         raise ValueError("저장본 형식이 올바르지 않아요.")

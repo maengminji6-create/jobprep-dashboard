@@ -463,7 +463,7 @@ def snapshot_import():
     try:
         data = validate(json.loads(raw.decode("utf-8-sig")))
     except (ValueError, UnicodeDecodeError) as exc:
-        msg = str(exc) if isinstance(exc, ValueError) and "GROWLY" in str(exc) else "저장본 파일을 읽지 못했어요."
+        msg = str(exc) if isinstance(exc, ValueError) and "CAIRN" in str(exc) else "저장본 파일을 읽지 못했어요."
         flash(msg, "error")
         return redirect(url_for("experiences.index", _anchor="tab-data"))
     snap = save_snapshot(f"파일에서 가져옴 · {f.filename[:60]}", data)
