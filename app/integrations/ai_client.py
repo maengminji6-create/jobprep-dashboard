@@ -1,6 +1,6 @@
 """OpenAI API로 경험별 자소서 어필 코멘트를 만듭니다.
 
-- 키: .env 의 OPENAI_API_KEY (없으면 호출하지 않고, 화면은 규칙 기반 기본 코멘트를 보여 줌)
+- 키: 사용자가 내 공간에 넣은 키, 없으면 운영자 키 OPENAI_API_KEY(배포에서는 무료 횟수 제한, core/ai_quota)
 - 모델: .env 의 AI_MODEL (기본 gpt-5.4-mini). 더 꼼꼼한 코멘트를 원하면 gpt-5.5 등으로 바꿔도 돼요.
 - 여러 경험을 한 번의 요청으로 보내고, JSON 스키마(structured outputs)로 형식이 고정된 결과를 받습니다.
 """
@@ -9,6 +9,8 @@ import re
 
 import openai
 from flask import current_app
+
+from ..core import ai_quota
 
 COMMENT_SCHEMA = {
     "type": "object",
@@ -59,13 +61,42 @@ class AiError(Exception):
     pass
 
 
-def api_key() -> str:
-    cfg = current_app.config
-    return cfg.get("OPENAI_API_KEY") or ""
-
-
 def enabled() -> bool:
-    return bool(api_key())
+    """지금 사용자가 AI를 쓸 수 있는지(내 키 · 남은 무료 횟수 · 하루 상한, core/ai_quota)."""
+    return ai_quota.available()
+
+
+def unavailable_message(cost: int = 1) -> str:
+    return ai_quota.unavailable_message(cost)
+
+
+def _open(cost: int, timeout: float):
+    """(OpenAI 클라이언트, 운영자 무료 키인지). 쓸 수 있는 키가 없으면 AiError."""
+    try:
+        key, free = ai_quota.pick_key(cost)
+    except ai_quota.QuotaError as exc:
+        raise AiError(str(exc))
+    return openai.OpenAI(api_key=key, timeout=timeout), free
+
+
+def _auth_error() -> AiError:
+    if ai_quota.own_key():
+        return AiError("내 공간에 넣은 OpenAI API 키가 올바르지 않아요. 내 공간에서 키를 다시 넣어 주세요.")
+    return AiError("API 키가 올바르지 않아요. 서버의 OPENAI_API_KEY 를 확인해 주세요.")
+
+
+def check_key(key: str) -> None:
+    """사용자가 넣은 키가 실제로 쓸 수 있는지 가볍게 확인(모델 목록 조회). 문제가 있으면 AiError."""
+    try:
+        openai.OpenAI(api_key=key, timeout=20.0).models.list()
+    except openai.AuthenticationError:
+        raise AiError("키가 올바르지 않아요. platform.openai.com/api-keys 에서 복사한 키를 그대로 넣어 주세요.")
+    except openai.PermissionDeniedError:
+        raise AiError("이 키에는 모델을 쓸 권한이 없어요. 키 권한(Permissions)을 확인해 주세요.")
+    except openai.APIConnectionError:
+        raise AiError("OpenAI 서버에 연결하지 못했어요. 잠시 뒤 다시 시도해 주세요.")
+    except openai.APIStatusError as exc:
+        raise AiError(f"키를 확인하지 못했어요(HTTP {exc.status_code}). 잠시 뒤 다시 시도해 주세요.")
 
 
 def _experience_block(exp, role_name: str, hits: list[str]) -> dict:
@@ -80,10 +111,9 @@ def _experience_block(exp, role_name: str, hits: list[str]) -> dict:
 
 
 def _call(system: str, prompt: str, schema: dict, name: str) -> dict:
-    """OpenAI에 JSON 스키마 고정 응답을 요청하고 dict 로 돌려줍니다. 실패하면 사용자에게 보여 줄 AiError."""
-    if not enabled():
-        raise AiError("OPENAI_API_KEY 가 설정되지 않았어요.")
-    client = openai.OpenAI(api_key=api_key(), timeout=180.0)
+    """OpenAI에 JSON 스키마 고정 응답을 요청하고 dict 로 돌려줍니다. 실패하면 사용자에게 보여 줄 AiError.
+    운영자 무료 키로 성공하면 무료 횟수 1회를 차감합니다(실패한 호출은 세지 않음)."""
+    client, free = _open(1, 180.0)
     try:
         response = client.chat.completions.create(
             model=current_app.config["AI_MODEL"],
@@ -92,7 +122,7 @@ def _call(system: str, prompt: str, schema: dict, name: str) -> dict:
             response_format={"type": "json_schema", "json_schema": {"name": name, "strict": True, "schema": schema}},
         )
     except openai.AuthenticationError:
-        raise AiError("API 키가 올바르지 않아요. .env 의 OPENAI_API_KEY 를 확인해 주세요.")
+        raise _auth_error()
     except openai.PermissionDeniedError:
         raise AiError("이 API 키로는 해당 모델을 쓸 수 없어요. 키 권한이나 AI_MODEL 값을 확인해 주세요.")
     except openai.NotFoundError:
@@ -114,9 +144,12 @@ def _call(system: str, prompt: str, schema: dict, name: str) -> dict:
     if choice.finish_reason == "length":
         raise AiError("한 번에 보낸 내용이 너무 많아요. 나눠서 요청해 주세요.")
     try:
-        return json.loads(choice.message.content or "")
+        data = json.loads(choice.message.content or "")
     except ValueError:
         raise AiError("AI 응답을 읽지 못했어요. 다시 시도해 주세요.")
+    if free:
+        ai_quota.charge(1)
+    return data
 
 
 def comment_experiences(items: list[tuple], role_name: str) -> dict[int, dict]:
@@ -249,14 +282,13 @@ VISION_PROMPT = """당신은 채용공고 이미지를 정확히 옮겨 적는 �
 
 
 def read_posting_images(chunks: list[str]) -> dict:
-    """chunks: data URL(이미지 조각) 목록 → 공고 구조(dict)."""
-    if not enabled():
-        raise AiError("이미지 속 공고를 읽으려면 OPENAI_API_KEY 가 필요해요.")
+    """chunks: data URL(이미지 조각) 목록 → 공고 구조(dict). 비싼 호출이라 무료 횟수는 AI_VISION_COST회로 셈."""
     if not chunks:
         raise AiError("읽을 공고 이미지가 없어요.")
+    cost = current_app.config["AI_VISION_COST"]
     content = [{"type": "text", "text": f"채용공고 이미지 조각 {len(chunks)}개입니다. 순서대로 이어서 읽어 주세요."}]
     content += [{"type": "image_url", "image_url": {"url": c, "detail": "high"}} for c in chunks]
-    client = openai.OpenAI(api_key=api_key(), timeout=240.0)
+    client, free = _open(cost, 240.0)
     try:
         response = client.chat.completions.create(
             model=current_app.config["AI_MODEL"],
@@ -266,7 +298,7 @@ def read_posting_images(chunks: list[str]) -> dict:
                              "json_schema": {"name": "posting_image", "strict": True, "schema": VISION_SCHEMA}},
         )
     except openai.AuthenticationError:
-        raise AiError("API 키가 올바르지 않아요. .env 의 OPENAI_API_KEY 를 확인해 주세요.")
+        raise _auth_error()
     except openai.BadRequestError as exc:
         raise AiError(f"이미지를 읽지 못했어요(요청 오류: {exc.message}). 공고 글을 붙여 넣어 주세요.")
     except openai.RateLimitError:
@@ -279,9 +311,12 @@ def read_posting_images(chunks: list[str]) -> dict:
     if choice.message.refusal or choice.finish_reason == "length":
         raise AiError("이미지 내용을 끝까지 읽지 못했어요. 공고 글을 붙여 넣어 주세요.")
     try:
-        return json.loads(choice.message.content or "")
+        data = json.loads(choice.message.content or "")
     except ValueError:
         raise AiError("AI 응답을 읽지 못했어요. 다시 시도해 주세요.")
+    if free:
+        ai_quota.charge(cost)
+    return data
 
 
 # ── 채용공고 × 내 경험·강점·자격증 매칭 리포트 ─────────────────────────

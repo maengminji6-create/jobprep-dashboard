@@ -95,7 +95,7 @@
     <div class="mode-panel" data-mode="image">
       <div class="field"><label for="pf-img">공고 캡처 이미지 <span class="muted">JPG·PNG · 최대 6장(합쳐 {{ config.MAX_CONTENT_LENGTH // 1048576 }}MB) · 고른 순서대로 읽어요</span></label>
         <input id="pf-img" type="file" name="images" accept=".png,.jpg,.jpeg,.webp" multiple></div>
-      <p class="muted hint">이미지 속 글자는 AI(OpenAI 비전)로 읽어요{% if not config.OPENAI_API_KEY %} — 지금은 <code>OPENAI_API_KEY</code>가 없어 읽을 수 없어요{% endif %}.</p>
+      <p class="muted hint">이미지 속 글자는 AI(OpenAI 비전)로 읽어요{% if not ai_available(config.AI_VISION_COST) %} — 지금은 읽을 수 없어요: {{ ai_unavailable(config.AI_VISION_COST) }}{% endif %}.</p>
     </div>
     <div class="mode-panel" data-mode="pdf">
       <div class="field"><label for="pf-pdf">공고 PDF <span class="muted">{{ config.MAX_CONTENT_LENGTH // 1048576 }}MB까지 · 여러 쪽은 순서대로 합쳐요</span></label>
@@ -373,7 +373,7 @@
         {% else %}<p>지금은 링크의 글만 분석했어요. 직무·자격·우대사항이 이미지로 들어 있는 공고라면 링크에서 본문 이미지를 찾아 읽어 올 수 있어요.</p>{% endif %}
         {% if ai_enabled %}<form method="post" action="{{ url_for('experiences.posting_read_images', pa_id=analysis.id) }}" data-ai-form>{{ csrf() }}
           <button class="btn sm" type="submit">🖼 이미지 속 공고 읽기</button></form>
-        {% else %}<small class="muted">.env 에 OPENAI_API_KEY 를 넣으면 읽을 수 있어요.</small>{% endif %}
+        {% else %}<small class="muted">{{ ai_unavailable(config.AI_VISION_COST) }}</small>{% endif %}
       </div>
       {% endif %}
       {% if doc and vision and vision.positions %}<p class="vision-note" style="margin-top:16px">📄 페이지 글</p>{% endif %}
@@ -440,7 +440,7 @@
         <div class="card-head"><h3>✦ AI 매칭 리포트</h3>
           {% if ai_enabled %}<form method="post" action="{{ url_for('experiences.posting_ai', pa_id=analysis.id) }}" data-ai-form>{{ csrf() }}
             <button class="btn sm" type="submit">{{ '다시 받기' if ai else 'AI 리포트 받기' }}</button></form>
-          {% else %}<small class="muted">.env 에 OPENAI_API_KEY 를 넣으면 쓸 수 있어요</small>{% endif %}</div>
+          {% else %}<small class="muted">{{ ai_unavailable() }}</small>{% endif %}</div>
         {% if ai %}
           {% if stale_ai %}<p class="badge warn" style="margin-bottom:8px">리포트 이후 이력·강점이 바뀌었어요 · 다시 받기를 눌러 보세요</p>{% endif %}
           <p class="ai-core"><b>이 공고가 원하는 사람</b> — {{ ai.posting_summary }}</p>

@@ -318,8 +318,7 @@ def make_comments():
         role = session.get("exp_role") if session.get("exp_role") in ROLE_BY_CODE else "overseas_sales"
     back = url_for("experiences.index", role=role, _anchor=request.form.get("anchor") or "top3")
     if not ai_client.enabled():
-        flash("AI 코멘트를 받으려면 .env 파일에 OPENAI_API_KEY 를 넣고 서버를 다시 켜 주세요. "
-              "지금은 규칙 기반 기본 코멘트를 보여 드려요.", "info")
+        flash(ai_client.unavailable_message() + " 지금은 규칙 기반 기본 코멘트를 보여 드려요.", "info")
         return redirect(back)
     ids = [int(i) for i in request.form.getlist("exp_id") if i.isdigit()]
     exps = [get_owned_or_404(Experience, i) for i in ids]
@@ -377,7 +376,7 @@ def structure(exp_id):
     from .structuring import check_ai_competencies, check_draft
     exp = get_owned_or_404(Experience, exp_id)
     if not ai_client.enabled():
-        flash("AI로 STAR 초안을 만들려면 .env 에 OPENAI_API_KEY 가 필요해요. 아래 질문을 보고 직접 채워 주세요.", "info")
+        flash(ai_client.unavailable_message() + " 아래 질문을 보고 직접 채워 주세요.", "info")
         return redirect(url_for("experiences.edit", exp_id=exp.id))
     role = session.get("exp_role") if session.get("exp_role") in ROLE_BY_CODE else "overseas_sales"
     try:
@@ -718,8 +717,8 @@ def posting_read_images(pa_id):
     """저장된 공고의 본문 이미지를 (다시) 읽어 분석에 반영."""
     from .posting_images import VISION_MARK, download_image, is_posting_sized, to_chunks, vision_to_text
     pa = get_owned_or_404(PostingAnalysis, pa_id)
-    if not ai_client.enabled():
-        flash("이미지 속 공고를 읽으려면 .env 에 OPENAI_API_KEY 를 넣고 서버를 다시 켜 주세요.", "info")
+    if not ai_client.ai_quota.available(current_app.config["AI_VISION_COST"]):
+        flash(ai_client.unavailable_message(current_app.config["AI_VISION_COST"]), "info")
         return redirect(url_for("experiences.posting_detail", pa_id=pa.id))
     urls = pa.images
     if not urls and pa.url:  # 이미지 읽기 기능 전에 저장한 공고: 링크를 다시 열어 본문 이미지 주소를 찾음
@@ -922,7 +921,7 @@ def posting_compare():
 def posting_ai(pa_id):
     pa = get_owned_or_404(PostingAnalysis, pa_id)
     if not ai_client.enabled():
-        flash("AI 매칭 리포트를 받으려면 .env 에 OPENAI_API_KEY 를 넣고 서버를 다시 켜 주세요.", "info")
+        flash(ai_client.unavailable_message(), "info")
         return redirect(url_for("experiences.posting_detail", pa_id=pa.id))
     exps, certs, profile, _linked = _match_inputs()
     try:

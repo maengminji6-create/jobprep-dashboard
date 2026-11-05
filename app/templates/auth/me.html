@@ -39,6 +39,30 @@
     {% endif %}
   </section>
 
+  <section class="card span-2" id="ai">
+    <h2>AI 사용</h2>
+    {% if my_key %}
+    <p>내 OpenAI API 키로 쓰는 중 · <code>{{ my_key }}</code> <span class="badge ok">횟수 제한 없음</span></p>
+    <p class="muted" style="font-size:.84rem">AI 요금은 내 OpenAI 계정에 청구돼요. 키는 암호화해서 저장하고, 화면·저장본 파일·로그 어디에도 원래 값이 나오지 않아요.</p>
+    <form method="post" action="{{ url_for('auth.ai_key') }}" onsubmit="return confirm('내 API 키를 지울까요?')">{{ csrf() }}
+      <input type="hidden" name="action" value="delete"><button class="btn secondary sm" type="submit">키 지우기</button></form>
+    {% else %}
+      {% if has_operator and free_limit %}
+      <p>무료 AI <b>{{ free_left }}</b>회 남았어요 <span class="muted">(전체 {{ free_limit }}회 · 이미지·스캔 PDF 읽기는 {{ config.AI_VISION_COST }}회로 세요)</span></p>
+      {% elif has_operator %}
+      <p>AI 기능을 쓸 수 있어요.</p>
+      {% else %}
+      <p class="muted">이 사이트에는 무료 AI가 없어요. 내 OpenAI API 키를 넣으면 AI 기능을 쓸 수 있어요.</p>
+      {% endif %}
+      <p class="muted" style="font-size:.84rem">무료 횟수를 다 쓰면 내 OpenAI API 키를 넣어 계속 쓸 수 있어요. 키는 platform.openai.com/api-keys 에서 만들 수 있고,
+        요금은 내 OpenAI 계정에 청구돼요. 넣은 키는 확인한 뒤 암호화해서 저장하고 내 AI 요청에만 써요.</p>
+      <form method="post" action="{{ url_for('auth.ai_key') }}" class="row">{{ csrf() }}
+        <div class="field"><input type="password" name="api_key" placeholder="sk-..." autocomplete="off" aria-label="OpenAI API 키"></div>
+        <div class="field" style="flex:0 0 auto"><button class="btn" type="submit" data-busy="키를 확인하는 중…">키 확인하고 저장</button></div>
+      </form>
+    {% endif %}
+  </section>
+
   <section class="card span-2">
     <h2>열쇠로 내 기록 열기</h2>
     <p class="muted">다른 기기에서 만든 내 기록을 이 브라우저로 불러와요.</p>

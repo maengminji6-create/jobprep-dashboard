@@ -43,7 +43,7 @@ def _generate(s: InterviewSession, use_ai: bool) -> tuple[int, str]:
     note = ""
     if use_ai:
         if not ai_client.enabled():
-            note = "AI 질문은 OPENAI_API_KEY 가 있어야 만들 수 있어요. 규칙 기반 질문만 넣었어요."
+            note = "AI 질문은 만들지 않았어요: " + ai_client.unavailable_message() + " 규칙 기반 질문만 넣었어요."
         else:
             try:
                 raw = ai_client.interview_questions(posting.posting_text if posting else "", exps, s.company, _role_name(s))
@@ -153,7 +153,7 @@ def save_answer(qid):
                 except ai_client.AiError as exc:
                     flash(f"AI 피드백은 받지 못했어요: {exc}", "info")
             else:
-                flash("AI 피드백은 OPENAI_API_KEY 가 있어야 받을 수 있어요. 규칙 점검만 했어요.", "info")
+                flash("AI 피드백은 받지 못했어요: " + ai_client.unavailable_message() + " 규칙 점검만 했어요.", "info")
         q.feedback_json = json.dumps(fb, ensure_ascii=False)
     db.session.commit()
     flash("답변을 저장했어요." + (" 점검 결과를 확인해 보세요." if request.form.get("action") == "check" else ""), "success")

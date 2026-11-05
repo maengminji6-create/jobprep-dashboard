@@ -109,7 +109,7 @@ def ai_link():
         flash("먼저 강점 결과지를 올려 주세요.", "error")
         return redirect(url_for("strengths.index"))
     if not ai_client.enabled():
-        flash("AI 분석을 쓰려면 .env 에 OPENAI_API_KEY 를 넣고 서버를 다시 켜 주세요.", "info")
+        flash(ai_client.unavailable_message(), "info")
         return redirect(url_for("strengths.index"))
     exps = owned(Experience).order_by(Experience.created_at).all()
     if not exps:

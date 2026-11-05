@@ -177,7 +177,7 @@ def draft():
     """✦ AI 답변 초안(JSON): 고른 경험만 근거로. 원문에 없는 숫자가 든 문장은 빼고 알려 줌. 저장은 사용자가."""
     from ..integrations import ai_client
     if not ai_client.enabled():
-        return jsonify({"error": "AI 초안을 쓰려면 .env 에 OPENAI_API_KEY 가 필요해요. 'STAR 뼈대 넣기'로 직접 써 보세요."}), 400
+        return jsonify({"error": ai_client.unavailable_message() + " 'STAR 뼈대 넣기'로 직접 써 볼 수도 있어요."}), 400
     ids = [int(x) for x in (request.form.get("exp_ids") or "").split(",") if x.strip().isdigit()][:3]
     exps = [get_owned_or_404(Experience, i) for i in ids]
     if not exps:
