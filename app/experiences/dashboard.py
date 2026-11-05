@@ -3,7 +3,7 @@ import re
 from collections import Counter
 
 from ..core.job_competencies import JOBS
-from .models import CATEGORIES
+from .models import CATEGORIES, normalize_category
 
 YEAR = re.compile(r"(19|20)\d{2}")
 
@@ -22,7 +22,7 @@ def build(exps: list, saved: dict, profile, links: list) -> dict:
     from ..analysis.services import integrated, overview, pending
     from ..jobfit.services import job_view
     view = overview(exps, saved)
-    cats = [(c, sum(1 for e in exps if e.category == c)) for c in CATEGORIES]
+    cats = [(c, sum(1 for e in exps if normalize_category(e.category) == c)) for c in CATEGORIES]
     jobs = []
     for j in JOBS:
         v = job_view(j["code"], exps, saved)

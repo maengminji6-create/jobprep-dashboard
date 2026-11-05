@@ -50,7 +50,7 @@
     {% for e in exps %}{% set a = saved.get(e.id) %}{% set d = a.data if a else none %}
     <details class="card analysis-card" {{ 'open' if loop.first and a }}>
       <summary>
-        <span class="badge">{{ e.category }}</span><b>{{ e.title }}</b>
+        <span class="badge cat-badge" data-cat="{{ e.category }}">{{ e.category }}</span><b>{{ e.title }}</b>
         {% if not a %}<span class="badge">분석 전</span>
         {% elif a.content_hash != e.content_hash %}<span class="badge warn">내용이 바뀌었어요</span>
         {% else %}<span class="badge ai">AI 분석</span>{% endif %}

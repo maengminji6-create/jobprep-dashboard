@@ -13,7 +13,7 @@ from ..analysis.services import BATCH
 from .analyzer import analyze_all, recommend_roles, role_options
 from .backup import MAX_FILE_BYTES, build_data, restore, save_snapshot, validate
 from .models import (CATEGORIES, CERT_CATEGORY, Certificate, Experience, ExperienceUpload, PostingAnalysis,
-                     Snapshot)
+                     Snapshot, normalize_category)
 from .parser import allowed, extract_text, is_spreadsheet, parse_spreadsheet, split_experiences
 from .posting import (ANALYSIS_VERSION, PostingFetchError, analyze_posting, clean_posting_text, fetch_posting,
                       fetch_posting_full, has_body)
@@ -71,7 +71,8 @@ def manage():
     ctx = _base_context()
     exps, role = ctx["exps"], ctx["role"]
     uploads = owned(ExperienceUpload).order_by(ExperienceUpload.created_at.desc()).all()
-    cat_counts = {c: sum(1 for e in exps if e.category == c) for c in EXP_CATEGORIES}
+    kind = {e.id: normalize_category(e.category) for e in exps}  # 목록에 없는 분류도 '기타'로 묶어 빠지지 않게
+    cat_counts = {c: sum(1 for e in exps if kind[e.id] == c) for c in EXP_CATEGORIES}
     return render_template("experiences/manage.html", exps=exps, analyses=ctx["analyses"], role=role,
                            roles=role_options(), auto_role=ctx["auto_role"],
                            role_name=ctx["role_name"], categories=EXP_CATEGORIES,
@@ -79,6 +80,8 @@ def manage():
                            certs=_cert_views(ctx["cert_rows"], role), ai_enabled=ai_client.enabled(),
                            uploads=uploads, upload_counts={u.id: sum(1 for e in exps if e.upload_id == u.id) for u in uploads},
                            cat_counts={c: n for c, n in cat_counts.items() if n},
+                           groups=[(c, [e for e in exps if kind[e.id] == c]) for c in EXP_CATEGORIES if cat_counts[c]],
+                           review_count=sum(1 for e in exps if e.needs_review),
                            snapshots=owned(Snapshot).order_by(Snapshot.created_at.desc()).all())
 
 
@@ -110,7 +113,7 @@ def report():
     certs = owned(Certificate).order_by(Certificate.created_at).all()
     profile = latest_profile()
     board = build(exps, saved_analyses(), profile, links_of(profile) if profile else [])
-    groups = [(c, [e for e in exps if e.category == c]) for c in EXP_CATEGORIES]
+    groups = [(c, [e for e in exps if normalize_category(e.category) == c]) for c in EXP_CATEGORIES]
     return render_template("experiences/report.html", board=board, certs=_cert_views(certs, "overseas_sales"),
                            groups=[g for g in groups if g[1]], today=date.today(), strength_profile=profile,
                            exp_count=len(exps))

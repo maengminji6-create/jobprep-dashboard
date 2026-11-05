@@ -59,6 +59,34 @@ class Experience(UserOwnedMixin, TimestampMixin, db.Model):
                    "star_action": "행동·해결 과정 (A)", "star_result": "결과·성과 (R)"}
 
     @property
+    def original_kind(self) -> str:
+        """파일에서 읽을 때 원래 적혀 있던 종류(내용 첫 줄 '종류: …'). 없으면 빈 값."""
+        first = next((ln.strip() for ln in (self.content or "").splitlines() if ln.strip()), "")
+        return first[3:].strip()[:30] if first.startswith("종류:") else ""
+
+    @property
+    def preview(self) -> str:
+        """카드 미리보기: 역할 → STAR → 내용 순으로 처음 나오는 글 한 줄('종류: …' 줄은 뺌)."""
+        for f in ("role", "star_situation", "star_action", "content", "strengths", "reflection"):
+            for ln in (getattr(self, f) or "").splitlines():
+                ln = ln.strip(" -•·")
+                if ln and not ln.startswith("종류:"):
+                    return ln[:120]
+        return ""
+
+    REVIEW_TITLES = {"순위", "no", "번호", "목차", "순서", "항목", "구분", "비고", "합계", "제목"}
+    REVIEW_WORDS = ("가이드", "전략", "필살기", "프리패스", "매칭", "추천", "작성법", "팁", "경험정리", "완성본", "정리본", "프레임워크")
+
+    @property
+    def needs_review(self) -> bool:
+        """문서의 목차·표 머리글이 경험으로 들어온 것 같은지(지우지 않고 '확인 필요'로만 표시)."""
+        import re
+        core = re.sub(r"^\s*\d+\s*[.)]?\s*", "", self.title or "").strip()
+        if len(core) <= 1 or core.lower() in self.REVIEW_TITLES or re.fullmatch(r"\d+\s*순위", core):
+            return True
+        return not self.period and any(w in core for w in self.REVIEW_WORDS)
+
+    @property
     def star_filled(self) -> int:
         """STAR 4칸 중 채운 칸 수."""
         return sum(1 for f in self.STAR_FIELDS if (getattr(self, f) or "").strip())

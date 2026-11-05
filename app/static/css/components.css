@@ -726,3 +726,36 @@ dialog.drawer::backdrop { background: rgba(43, 44, 48, .2); backdrop-filter: blu
   .card { box-shadow: none !important; border: 1px solid #ddd; break-inside: avoid; }
   body, .shell, .frame { background: #fff !important; }
 }
+
+/* ── 경험 유형 색: data-cat 하나로 배지·카드 줄·묶음 제목·필터·홈 막대가 같은 색 ── */
+[data-cat] { --cat: var(--cat-etc); }
+[data-cat="인턴·직장 경험"] { --cat: var(--cat-intern); }
+[data-cat="프로젝트"] { --cat: var(--cat-project); }
+[data-cat="대외활동"] { --cat: var(--cat-activity); }
+[data-cat="공모전·수상"] { --cat: var(--cat-award); }
+[data-cat="아르바이트"] { --cat: var(--cat-parttime); }
+[data-cat="교육·자격증"] { --cat: var(--cat-edu); }
+.cat-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--cat); margin-right: 6px; vertical-align: 1px; }
+.badge.cat-badge { background: var(--cat); color: #fff; font-weight: 600; }
+.cat-group { margin-bottom: 30px; }
+.cat-group[hidden] { display: none; }
+.cat-head { display: flex; align-items: center; gap: 2px; margin: 0 0 12px; padding-bottom: 8px; font-size: .95rem;
+  color: var(--cat); border-bottom: 2px solid var(--cat); }
+.cat-head span { margin-left: 6px; font-size: .78rem; font-weight: 500; color: var(--muted); }
+.exp-card[data-cat] { box-shadow: var(--raise-sm), inset 4px 0 0 var(--cat); padding-left: 24px; }
+.exp-card[data-cat]:hover { box-shadow: var(--raise-lg), inset 4px 0 0 var(--cat); }
+.exp-card-head { justify-content: flex-start; flex-wrap: wrap; }
+.exp-card .kind { font-size: .72rem; color: var(--muted); }
+.exp-card h3 { font-size: 1.02rem; line-height: 1.4; }
+.exp-meta { margin: 0; font-size: .78rem; color: var(--muted); }
+.exp-preview { margin: 8px 0 0; max-width: none; }
+.exp-preview.empty { font-size: .78rem; color: var(--muted); font-style: italic; }
+.exp-card.is-review { background: var(--surface-hi); box-shadow: var(--raise-sm), inset 4px 0 0 var(--warn); }
+.exp-card.is-review h3 { color: var(--muted); }
+.filter-chips button[data-cat][aria-pressed="true"] { color: var(--cat); }
+.filter-chips .review-chip { color: var(--warn); }
+.review-note { margin: -6px 0 18px; padding: 10px 14px; border-radius: var(--radius-sm); font-size: .82rem;
+  color: var(--text); box-shadow: inset 3px 0 0 var(--warn); background: var(--surface-hi); }
+.hbar-list li[data-cat] .hbar b { background: var(--cat); }
+.hbar-list li[data-cat] > span::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--cat); margin-right: 6px; vertical-align: 1px; }
