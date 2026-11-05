@@ -4,9 +4,9 @@
    - 'TOP 5 강점' 목록, 'Top1. 신중함' 같은 세부 가이드 제목, '정의' 문단을 먼저 찾고
    - 형식이 다른 결과지는 강점 단어 사전(STRENGTH_LEXICON)에서 자주 나온 단어로 대신합니다.
 2) link_strengths(): 강점마다 그 강점이 드러나는 내 경험을 '행동 단서 단어'로 찾아 연결합니다(키 없이 동작).
-3) AI 키가 있으면 integrations.ai_client.link_strengths_ai() 로 더 자연스러운 연결·자소서 팁을 받습니다.
+3) 결과지에서 뽑은 강점은 preview_items() 로 먼저 보여 주고, 사용자가 확인·수정한 것(strengths_from_form)만 저장합니다.
+   경험과의 연결·수정·해제는 AI 분석 화면(analysis)에서 합니다.
 """
-import hashlib
 import json
 import re
 
@@ -217,18 +217,45 @@ def parse_manual(text: str) -> dict:
     return {"strengths": items, "method": "manual", "area": "", "role": ""}
 
 
-def matrix(linked: list[dict], exps: list, limit: int = 8) -> dict:
-    """강점(행) × 경험(열) 연결 점수표. 강점과 많이 이어지는 경험부터 최대 limit개."""
-    totals = {e.id: sum(s["all_scores"].get(e.id, 0) for s in linked) for e in exps}
-    cols = [e for e in sorted(exps, key=lambda e: totals[e.id], reverse=True) if totals[e.id] > 0][:limit]
-    top = max([s["all_scores"].get(e.id, 0) for s in linked for e in cols] or [1])
-    rows = [{"name": s["name"], "cells": [round(s["all_scores"].get(e.id, 0) / top * 100) for e in cols]} for s in linked]
-    return {"cols": cols, "rows": rows}
+MAX_STRENGTHS = 10
+SOURCES = {"file": "결과지 파일", "paste": "붙여넣은 결과", "manual": "직접 입력"}
 
 
-def experiences_hash(exps, role: str, profile_id: int) -> str:
-    raw = f"{role}|{profile_id}|" + "|".join(e.content_hash for e in sorted(exps, key=lambda e: e.id))
-    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+def snippet(text: str, name: str, width: int = 50) -> str:
+    """결과지에서 강점 이름이 처음 나오는 곳 앞뒤 글(사용자가 추출이 맞는지 확인용). 없으면 빈 값."""
+    i = (text or "").find(name)
+    if i < 0 or not name:
+        return ""
+    start, end = max(0, i - width), i + len(name) + width
+    return ("…" if start else "") + _clean(text[start:end]) + ("…" if end < len(text) else "")
+
+
+def preview_items(strengths: list[dict], text: str) -> list[dict]:
+    """미리보기 행: 문서에서 읽은 그대로 + 결과지 속 위치."""
+    return [{"name": s["name"], "summary": s.get("summary", ""), "definition": s.get("definition", ""),
+             "rank": s.get("rank") or i + 1, "snippet": snippet(text, s["name"]), "edited": bool(s.get("edited"))}
+            for i, s in enumerate(strengths)]
+
+
+def strengths_from_form(form, source_text: str) -> list[dict]:
+    """미리보기 폼 → 저장할 강점. 지운 행·빈 이름은 빼고, 문서에서 읽은 값과 달라졌으면 edited 로 표시.
+    in_source: 결과지 글에 이 이름이 실제로 있는지(직접 추가한 강점과 구분)."""
+    out = []
+    rows = zip(form.getlist("name"), form.getlist("summary"), form.getlist("definition"),
+               form.getlist("orig"), form.getlist("keep"), form.getlist("was_edited"))
+    for name, summary, definition, orig, keep, was_edited in rows:
+        name, summary, definition = name.strip()[:20], summary.strip()[:200], definition.strip()[:400]
+        if keep != "1" or not name or name in [s["name"] for s in out]:
+            continue
+        item = {"name": name, "summary": summary, "rank": len(out) + 1, "in_source": name in (source_text or "")}
+        if definition:
+            item["definition"] = definition
+        if was_edited == "1" or orig != f"{name}|{summary}|{definition}":
+            item["edited"] = True
+        out.append(item)
+        if len(out) == MAX_STRENGTHS:
+            break
+    return out
 
 
 def latest_profile():

@@ -5,22 +5,22 @@ from flask import Response, current_app, flash, redirect, render_template, reque
 from flask_login import login_required
 
 from ..core.scoping import create_owned, get_owned_or_404, owned
-from ..core.trade_roles import GROUP_BY_CODE, ROLE_BY_CODE, ROLE_GROUPS, TRADE_ROLES
+from ..core.trade_roles import GROUP_BY_CODE, ROLE_BY_CODE, TRADE_ROLES
 from ..extensions import db
 from ..integrations import ai_client
 from . import bp
-from .analyzer import analyze_all, essay_question_for, recommend_roles, role_options, role_profile
+from ..analysis.services import BATCH
+from .analyzer import analyze_all, recommend_roles, role_options
 from .backup import MAX_FILE_BYTES, build_data, restore, save_snapshot, validate
-from .models import (CATEGORIES, Certificate, Experience, ExperienceUpload, PostingAnalysis, Snapshot,
-                     TopExclusion)
+from .models import (CATEGORIES, CERT_CATEGORY, Certificate, Experience, ExperienceUpload, PostingAnalysis,
+                     Snapshot)
 from .parser import allowed, extract_text, is_spreadsheet, parse_spreadsheet, split_experiences
 from .posting import (ANALYSIS_VERSION, PostingFetchError, analyze_posting, clean_posting_text, fetch_posting,
                       fetch_posting_full, has_body)
-from .services import (certificate_from_item, excluded_ids, generate_comments, rule_comment, saved_comments,
+from .services import (certificate_from_item, generate_comments, rule_comment, saved_comments,
                        upsert_certificate, upsert_experience)
 
-CERT_CATEGORY = "자격증·어학"
-EXP_CATEGORIES = [c for c in CATEGORIES if c != CERT_CATEGORY]  # 경험 분류(자격증은 따로 관리)
+EXP_CATEGORIES = CATEGORIES  # 경험 유형 7개(자격증·어학은 Certificate 로 따로 관리)
 
 
 def _selected_role(default: str):
@@ -39,15 +39,6 @@ def _selected_role(default: str):
     return ROLE_BY_CODE[role]["group"], role, auto
 
 
-def _rank(analyses: list[dict], role: str) -> list[dict]:
-    return sorted(analyses, key=lambda a: (a["roles"][role]["score"], a["strength"]), reverse=True)
-
-
-def _top3(analyses: list[dict], role: str, skip: set[int]) -> list[dict]:
-    """'TOP 3에서 빼기'한 경험은 건너뛰고 다음 순위를 올립니다."""
-    return [a for a in _rank(analyses, role) if a["roles"][role]["score"] > 0 and a["id"] not in skip][:3]
-
-
 def _cert_views(certs, role: str) -> list[dict]:
     views = []
     for c in certs:
@@ -58,86 +49,69 @@ def _cert_views(certs, role: str) -> list[dict]:
     return sorted(views, key=lambda v: v["rel"], reverse=True)
 
 
-def _status_board(exps) -> dict:
-    """첫 화면 '취업 준비 현황': 다가오는 일정 · 최근 분석한 공고 · 지원 현황 · 핵심 보유 역량."""
-    from collections import Counter
+def _base_context() -> dict:
+    """홈·경험 관리가 함께 쓰는 값: 내 경험·자격증, 규칙 분석, 지금 보는 직무."""
+    exps = owned(Experience).order_by(Experience.created_at).all()
+    certs = owned(Certificate).order_by(Certificate.created_at).all()
+    analyses = analyze_all(exps)
+    recs = recommend_roles(analyses, certs=certs)
+    if request.args.get("auto"):  # '추천 1위로 돌아가기' → 직접 고른 직무 기억을 지움
+        session.pop("exp_role", None)
+    group, role, auto = _selected_role(recs[0]["code"] if recs else "overseas_sales")
+    return {"exps": exps, "cert_rows": certs, "analysis_list": analyses, "analyses": {a["id"]: a for a in analyses},
+            "recs": recs, "group": group, "role": role, "auto_role": auto, "role_name": ROLE_BY_CODE[role]["name"]}
 
-    from ..core.job_status import STATUSES
-    from ..schedule.services import upcoming
-    saved = owned(PostingAnalysis).filter(PostingAnalysis.is_saved.is_(True)).all()
-    counts = Counter(p.status for p in saved if p.status)
-    recent = owned(PostingAnalysis).order_by(PostingAnalysis.created_at.desc()).limit(3).all()
-    tags = Counter(t for e in exps for t in e.competency_list)
-    return {"upcoming": upcoming()[:4], "recent": recent, "pipeline": [(s, counts[s]) for s in STATUSES if counts[s]],
-            "saved_total": len(saved), "competencies": tags.most_common(8)}
+
+@bp.route("/manage")
+@login_required
+def manage():
+    """경험 관리: 종류별 모아보기 · 자격증·어학 · 추가·파일·저장본."""
+    ctx = _base_context()
+    exps, role = ctx["exps"], ctx["role"]
+    uploads = owned(ExperienceUpload).order_by(ExperienceUpload.created_at.desc()).all()
+    cat_counts = {c: sum(1 for e in exps if e.category == c) for c in EXP_CATEGORIES}
+    return render_template("experiences/manage.html", exps=exps, analyses=ctx["analyses"], role=role,
+                           roles=role_options(), auto_role=ctx["auto_role"],
+                           role_name=ctx["role_name"], categories=EXP_CATEGORIES,
+                           comments=_comment_views(exps, ctx["analyses"], role, ctx["role_name"]),
+                           certs=_cert_views(ctx["cert_rows"], role), ai_enabled=ai_client.enabled(),
+                           uploads=uploads, upload_counts={u.id: sum(1 for e in exps if e.upload_id == u.id) for u in uploads},
+                           cat_counts={c: n for c, n in cat_counts.items() if n},
+                           snapshots=owned(Snapshot).order_by(Snapshot.created_at.desc()).all())
 
 
 @bp.route("/")
 @login_required
 def index():
+    """홈: 경험이 어떻게 쌓이고 분석·연결되고 있는지(experiences/dashboard.py)."""
+    from ..analysis.services import links_of, saved_analyses
+    from ..strengths.services import latest_profile
+    from .dashboard import build
     exps = owned(Experience).order_by(Experience.created_at).all()
-    certs = owned(Certificate).order_by(Certificate.created_at).all()
-    analyses = analyze_all(exps)
-    by_id = {a["id"]: a for a in analyses}
-    recs = recommend_roles(analyses, certs=certs)
-    if request.args.get("auto"):  # '추천 1위로 돌아가기' → 직접 고른 직무 기억을 지움
-        session.pop("exp_role", None)
-    group, role, auto = _selected_role(recs[0]["code"] if recs else "overseas_sales")
-    skip = excluded_ids(role)
-    top3 = _top3(analyses, role, skip)
-    for a in top3:
-        a["question"] = essay_question_for(a)
-    excluded = [by_id[i] for i in skip if i in by_id]
-    ranked = _rank(analyses, role)
-
-    prof = role_profile(analyses, certs)
-    chart = {
-        "radar_labels": [r["name"].split("(")[0] for r in TRADE_ROLES],
-        "radar_values": [prof[r["code"]] for r in TRADE_ROLES],
-        "radar_selected": [r["code"] for r in TRADE_ROLES].index(role),
-        "bar_labels": [a["title"] if len(a["title"]) <= 22 else a["title"][:21] + "…" for a in ranked],
-        "bar_fit": [a["roles"][role]["score"] for a in ranked],
-        "bar_strength": [a["strength"] for a in ranked],
-    }
-    uploads = owned(ExperienceUpload).order_by(ExperienceUpload.created_at.desc()).all()
-    upload_counts = {u.id: sum(1 for e in exps if e.upload_id == u.id) for u in uploads}
-    role_name = ROLE_BY_CODE[role]["name"]
-    comments = _comment_views(exps, by_id, role, role_name)
-    cat_counts = {c: sum(1 for e in exps if e.category == c) for c in EXP_CATEGORIES}
-    cat_counts = {c: n for c, n in cat_counts.items() if n}
-    snapshots = owned(Snapshot).order_by(Snapshot.created_at.desc()).all()
-    return render_template("experiences/index.html", exps=exps, analyses=by_id, top3=top3, excluded=excluded,
-                           status_board=_status_board(exps),
-                           role=role, group=group, role_name=role_name, group_name=GROUP_BY_CODE[group]["name"],
-                           groups=ROLE_GROUPS, roles=role_options(), chart=chart, uploads=uploads,
-                           categories=EXP_CATEGORIES, comments=comments, certs=_cert_views(certs, role),
-                           ai_enabled=ai_client.enabled(), upload_counts=upload_counts, recs=recs, auto_role=auto,
-                           cat_counts=cat_counts, snapshots=snapshots)
+    profile = latest_profile()
+    board = build(exps, saved_analyses(), profile, links_of(profile) if profile else [])
+    return render_template("experiences/index.html", board=board, cert_count=owned(Certificate).count(),
+                           ai_enabled=ai_client.enabled(), batch=BATCH)
 
 
 @bp.route("/report")
 @login_required
 def report():
-    """내 이력 정리 인쇄용 페이지. 브라우저의 'PDF로 저장'으로 PDF를 만듭니다(한글 글꼴 문제 없음)."""
+    """내 이력 정리 인쇄용 페이지. 브라우저의 'PDF로 저장'으로 PDF를 만듭니다(한글 글꼴 문제 없음).
+    직무는 점수가 아니라 직무 연결 기준표에서 확인된 역량 수로 보여 줍니다."""
     from datetime import date
 
+    from ..analysis.services import links_of, saved_analyses
     from ..strengths.services import latest_profile
+    from .dashboard import build
     exps = owned(Experience).order_by(Experience.created_at).all()
     certs = owned(Certificate).order_by(Certificate.created_at).all()
-    analyses = analyze_all(exps)
-    by_id = {a["id"]: a for a in analyses}
-    recs = recommend_roles(analyses, certs=certs)
-    role = request.args.get("role")
-    if role not in ROLE_BY_CODE:
-        role = session.get("exp_role") if session.get("exp_role") in ROLE_BY_CODE else (
-            recs[0]["code"] if recs else "overseas_sales")
-    role_name = ROLE_BY_CODE[role]["name"]
-    top3 = _top3(analyses, role, excluded_ids(role))
-    comments = _comment_views(exps, by_id, role, role_name)
+    profile = latest_profile()
+    board = build(exps, saved_analyses(), profile, links_of(profile) if profile else [])
     groups = [(c, [e for e in exps if e.category == c]) for c in EXP_CATEGORIES]
-    return render_template("experiences/report.html", recs=recs, role=role, role_name=role_name, top3=top3,
-                           comments=comments, certs=_cert_views(certs, role), groups=[g for g in groups if g[1]],
-                           analyses=by_id, today=date.today(), strength_profile=latest_profile(), exp_count=len(exps))
+    return render_template("experiences/report.html", board=board, certs=_cert_views(certs, "overseas_sales"),
+                           groups=[g for g in groups if g[1]], today=date.today(), strength_profile=profile,
+                           exp_count=len(exps))
 
 
 def _comment_views(exps, analyses: dict, role: str, role_name: str) -> dict:
@@ -161,10 +135,10 @@ def upload():
     f = request.files.get("file")
     if not f or not f.filename:
         flash("업로드할 파일을 선택해 주세요.", "error")
-        return redirect(url_for("experiences.index", _anchor="tab-file"))
+        return redirect(url_for("experiences.manage", _anchor="tab-file"))
     if not allowed(f.filename):
         flash("xlsx, xls, csv, docx, pdf, txt, md 파일만 올릴 수 있어요.", "error")
-        return redirect(url_for("experiences.index", _anchor="tab-file"))
+        return redirect(url_for("experiences.manage", _anchor="tab-file"))
     try:
         data = f.read()
         if is_spreadsheet(f.filename):
@@ -176,15 +150,15 @@ def upload():
         current_app.logger.exception("경험정리 업로드: 라이브러리 없음")
         flash(f"이 파일 형식을 읽는 라이브러리({exc.name})가 설치돼 있지 않아요. "
               "VS Code 터미널에서 'pip install -r requirements.txt'를 실행한 뒤 서버를 다시 켜 주세요.", "error")
-        return redirect(url_for("experiences.index", _anchor="tab-file"))
+        return redirect(url_for("experiences.manage", _anchor="tab-file"))
     except Exception as exc:
         current_app.logger.exception("경험정리 업로드 실패: %s", f.filename)
         flash(f"파일을 읽지 못했어요({exc.__class__.__name__}). 암호가 걸려 있거나 손상된 파일인지 확인해 주세요. "
               "엑셀이라면 .xlsx로 다시 저장해서 올려 보세요.", "error")
-        return redirect(url_for("experiences.index", _anchor="tab-file"))
+        return redirect(url_for("experiences.manage", _anchor="tab-file"))
     if not items:
         flash("파일에서 경험 내용을 찾지 못했어요. 스캔 이미지 PDF라면 텍스트 파일로 바꿔 올려 주세요.", "error")
-        return redirect(url_for("experiences.index", _anchor="tab-file"))
+        return redirect(url_for("experiences.manage", _anchor="tab-file"))
     up = create_owned(ExperienceUpload, filename=f.filename[:255], extracted_text=text[:200000], item_count=len(items))
     db.session.flush()
     added = updated = cert_n = 0
@@ -202,7 +176,7 @@ def upload():
     msg += f", 기존 경험 업데이트 {updated}개" if updated else ""
     msg += f", 자격증·어학 {cert_n}개" if cert_n else ""
     flash(msg + ". 분석에 바로 반영했어요.", "success")
-    return redirect(url_for("experiences.index"))
+    return redirect(url_for("experiences.manage"))
 
 
 def _form_fields() -> dict:
@@ -222,14 +196,17 @@ def save():
     target = get_owned_or_404(Experience, target_id) if target_id else None
     if not target and not fields["title"]:
         flash("새 경험이라면 경험 이름을 적어 주세요.", "error")
-        return redirect(url_for("experiences.index", _anchor="tab-exp"))
+        return redirect(url_for("experiences.manage", _anchor="tab-exp"))
     if not any(fields[f] for f in Experience.TEXT_FIELDS) and not target and not fields["organization"]:
         flash("역할·내용·강점·키워드·느낀점 중 하나 이상을 적어 주세요.", "error")
-        return redirect(url_for("experiences.index", _anchor="tab-exp"))
+        return redirect(url_for("experiences.manage", _anchor="tab-exp"))
     exp, created = upsert_experience(fields, target=target)
     db.session.commit()
+    if created and exp.star_filled < 4:
+        flash(f"'{exp.title}' 경험을 추가했어요. STAR로 정리하면 분석이 더 정확해져요.", "success")
+        return redirect(url_for("experiences.edit", exp_id=exp.id, _anchor="star"))
     flash(f"'{exp.title}' 경험을 {'추가' if created else '업데이트'}했어요. 분석에 바로 반영됐어요.", "success")
-    return redirect(url_for("experiences.index"))
+    return redirect(url_for("experiences.manage"))
 
 
 # ── 자격증·어학 ─────────────────────────────────────────────────────
@@ -241,12 +218,12 @@ def add_certificate():
     get = lambda k: (request.form.get(k) or "").strip()  # noqa: E731
     if not get("cert_name"):
         flash("자격증·어학 시험 이름을 적어 주세요.", "error")
-        return redirect(url_for("experiences.index", _anchor="tab-cert"))
+        return redirect(url_for("experiences.manage", _anchor="tab-cert"))
     cert, created = upsert_certificate(get("cert_name"), get("cert_score"), get("cert_issuer"),
                                        get("cert_date"), get("cert_note"))
     db.session.commit()
     flash(f"자격증 '{cert.name}'을(를) {'추가' if created else '업데이트'}했어요.", "success")
-    return redirect(url_for("experiences.index", _anchor="certs"))
+    return redirect(url_for("experiences.manage", _anchor="certs"))
 
 
 @bp.route("/certificate/<int:cert_id>/edit", methods=["GET", "POST"])
@@ -260,7 +237,7 @@ def edit_certificate(cert_id):
         cert.issuer, cert.note = get("cert_issuer")[:120], get("cert_note")
         db.session.commit()
         flash("자격증을 수정했어요.", "success")
-        return redirect(url_for("experiences.index", _anchor="certs"))
+        return redirect(url_for("experiences.manage", _anchor="certs"))
     return render_template("experiences/cert_edit.html", cert=cert)
 
 
@@ -271,41 +248,10 @@ def delete_certificate(cert_id):
     db.session.delete(cert)
     db.session.commit()
     flash(f"자격증 '{cert.name}'을(를) 지웠어요.", "info")
-    return redirect(url_for("experiences.index", _anchor="certs"))
+    return redirect(url_for("experiences.manage", _anchor="certs"))
 
 
 # ── TOP 3 에서 빼기 / 되돌리기 ───────────────────────────────────────
-
-def _role_from_form() -> str:
-    for role in (request.form.get("role"), session.get("exp_role")):
-        if role in ROLE_BY_CODE:
-            return role
-    return "overseas_sales"
-
-
-@bp.route("/<int:exp_id>/exclude", methods=["POST"])
-@login_required
-def exclude(exp_id):
-    exp = get_owned_or_404(Experience, exp_id)
-    role = _role_from_form()
-    if exp.id not in excluded_ids(role):
-        create_owned(TopExclusion, experience_id=exp.id, role_code=role)
-        db.session.commit()
-    flash(f"'{exp.title}'을(를) {ROLE_BY_CODE[role]['name']} TOP 3에서 뺐어요. 다음 순위 경험이 올라왔어요.", "info")
-    return redirect(url_for("experiences.index", role=role, _anchor="top3"))
-
-
-@bp.route("/<int:exp_id>/include", methods=["POST"])
-@login_required
-def include(exp_id):
-    exp = get_owned_or_404(Experience, exp_id)
-    role = _role_from_form()
-    for x in owned(TopExclusion).filter(TopExclusion.experience_id == exp.id, TopExclusion.role_code == role):
-        db.session.delete(x)
-    db.session.commit()
-    flash(f"'{exp.title}'을(를) 다시 순위에 넣었어요.", "success")
-    return redirect(url_for("experiences.index", role=role, _anchor="top3"))
-
 
 # ── AI 코멘트 ──────────────────────────────────────────────────────
 
@@ -316,7 +262,7 @@ def make_comments():
     role = request.form.get("role")
     if role not in ROLE_BY_CODE:
         role = session.get("exp_role") if session.get("exp_role") in ROLE_BY_CODE else "overseas_sales"
-    back = url_for("experiences.index", role=role, _anchor=request.form.get("anchor") or "top3")
+    back = url_for("experiences.manage", role=role, _anchor="browse")  # 코멘트는 경험 관리의 경험 카드에 있음
     if not ai_client.enabled():
         flash(ai_client.unavailable_message() + " 지금은 규칙 기반 기본 코멘트를 보여 드려요.", "info")
         return redirect(back)
@@ -340,13 +286,13 @@ def make_comments():
 def _edit_page(exp, draft=None, draft_notes=None, ai_questions=None):
     """경험 상세·수정 화면: STAR · 역량 추천(근거 문장) · 빈 칸 질문 · 관련 직무 · 활용 내역."""
     from .analyzer import analyze
-    from .structuring import experience_usage, star_gaps, suggest_competencies
+    from .structuring import STAR_QUESTIONS, experience_usage, star_gaps, suggest_competencies
     a = analyze(exp)
     role_hint = [code for code, score in a["top_roles"] if score >= 30]
     return render_template("experiences/edit.html", exp=exp, categories=EXP_CATEGORIES, roles=role_options(),
                            role_map=ROLE_BY_CODE, role_hint=role_hint, suggestions=suggest_competencies(exp),
                            gaps=star_gaps(exp), usage=experience_usage(exp), draft=draft or {},
-                           draft_notes=draft_notes or [], ai_questions=ai_questions or [],
+                           draft_notes=draft_notes or [], ai_questions=ai_questions or [], star_hints=STAR_QUESTIONS,
                            ai_enabled=ai_client.enabled())
 
 
@@ -398,7 +344,7 @@ def delete(exp_id):
     db.session.delete(exp)
     db.session.commit()
     flash("삭제했어요.", "info")
-    return redirect(url_for("experiences.index"))
+    return redirect(url_for("experiences.manage"))
 
 
 # ── 내 데이터: 업로드 기록 · 저장본 저장/불러오기/파일 ───────────────────
@@ -414,7 +360,7 @@ def delete_upload(upload_id):
     db.session.delete(up)
     db.session.commit()
     flash(f"'{up.filename}'로 들어온 경험 {len(exps)}개를 지웠어요.", "info")
-    return redirect(url_for("experiences.index", _anchor="tab-data"))
+    return redirect(url_for("experiences.manage", _anchor="tab-data"))
 
 
 @bp.route("/reset", methods=["POST"])
@@ -423,7 +369,7 @@ def reset_all():
     """내 경험·자격증·업로드 기록·AI 코멘트·공고 분석을 모두 지웁니다(계정과 저장본은 유지)."""
     if request.form.get("confirm") != "삭제":
         flash("확인 칸에 '삭제'라고 적어야 지울 수 있어요.", "error")
-        return redirect(url_for("experiences.index", _anchor="tab-data"))
+        return redirect(url_for("experiences.manage", _anchor="tab-data"))
     save_snapshot(f"전체 지우기 전 자동 저장 · {datetime.now():%m/%d %H:%M}")
     n = 0
     for model in (Experience, Certificate, ExperienceUpload, PostingAnalysis):
@@ -432,7 +378,7 @@ def reset_all():
             n += model is Experience
     db.session.commit()
     flash(f"내 이력 {n}개와 자격증·업로드·분석 기록을 지웠어요. 지우기 전 상태는 저장본에 남겨 뒀어요.", "info")
-    return redirect(url_for("experiences.index"))
+    return redirect(url_for("experiences.manage"))
 
 
 @bp.route("/data/save", methods=["POST"])
@@ -443,7 +389,7 @@ def snapshot_save():
     db.session.commit()
     flash(f"'{snap.name}'으로 저장했어요(경험 {snap.exp_count}개 · 자격증 {snap.cert_count}개"
           f"{' · 강점 결과지' if snap.has_strength else ''}).", "success")
-    return redirect(url_for("experiences.index", _anchor="tab-data"))
+    return redirect(url_for("experiences.manage", _anchor="tab-data"))
 
 
 @bp.route("/data/<int:snap_id>/load", methods=["POST"])
@@ -455,7 +401,7 @@ def snapshot_load(snap_id):
         data = validate(snap.data)
     except ValueError as exc:
         flash(str(exc), "error")
-        return redirect(url_for("experiences.index", _anchor="tab-data"))
+        return redirect(url_for("experiences.manage", _anchor="tab-data"))
     r = restore(data, experiences="experiences" in parts, strength="strength" in parts,
                 applications="applications" in parts)
     db.session.commit()
@@ -467,7 +413,7 @@ def snapshot_load(snap_id):
     if r["applications"]:
         done.append(f"자소서 {r['applications']}개")
     flash(f"'{snap.name}'을(를) 불러왔어요({', '.join(done) or '바뀐 내용 없음'}). 불러오기 전 상태는 자동 저장했어요.", "success")
-    return redirect(url_for("experiences.index"))
+    return redirect(url_for("experiences.manage"))
 
 
 @bp.route("/data/<int:snap_id>/delete", methods=["POST"])
@@ -477,7 +423,7 @@ def snapshot_delete(snap_id):
     db.session.delete(snap)
     db.session.commit()
     flash(f"저장본 '{snap.name}'을(를) 지웠어요.", "info")
-    return redirect(url_for("experiences.index", _anchor="tab-data"))
+    return redirect(url_for("experiences.manage", _anchor="tab-data"))
 
 
 def _json_download(data: dict, stem: str) -> Response:
@@ -507,22 +453,22 @@ def snapshot_import():
     f = request.files.get("file")
     if not f or not f.filename:
         flash("올릴 저장본 파일(.json)을 골라 주세요.", "error")
-        return redirect(url_for("experiences.index", _anchor="tab-data"))
+        return redirect(url_for("experiences.manage", _anchor="tab-data"))
     raw = f.read(MAX_FILE_BYTES + 1)
     if len(raw) > MAX_FILE_BYTES:
         flash("저장본 파일이 너무 커요(최대 5MB).", "error")
-        return redirect(url_for("experiences.index", _anchor="tab-data"))
+        return redirect(url_for("experiences.manage", _anchor="tab-data"))
     try:
         data = validate(json.loads(raw.decode("utf-8-sig")))
     except (ValueError, UnicodeDecodeError) as exc:
         msg = str(exc) if isinstance(exc, ValueError) and "CAIRN" in str(exc) else "저장본 파일을 읽지 못했어요."
         flash(msg, "error")
-        return redirect(url_for("experiences.index", _anchor="tab-data"))
+        return redirect(url_for("experiences.manage", _anchor="tab-data"))
     snap = save_snapshot(f"파일에서 가져옴 · {f.filename[:60]}", data)
     db.session.commit()
     flash(f"'{f.filename}'을(를) 저장본으로 추가했어요(경험 {snap.exp_count}개 · 자격증 {snap.cert_count}개). "
           "'불러오기'를 누르면 지금 데이터로 바뀌어요.", "success")
-    return redirect(url_for("experiences.index", _anchor="tab-data"))
+    return redirect(url_for("experiences.manage", _anchor="tab-data"))
 
 
 # ── 공고 매칭 ───────────────────────────────────────────────────────

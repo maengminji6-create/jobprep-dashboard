@@ -12,7 +12,7 @@ import re
 NL = "\n"
 
 from ..core.scoping import create_owned, owned
-from .models import CATEGORIES, Experience
+from .models import Experience, normalize_category
 
 SCALAR_FIELDS = ("category", "organization", "period")
 
@@ -57,7 +57,7 @@ def apply_fields(exp: Experience, fields: dict) -> None:
     for f in SCALAR_FIELDS:
         v = (fields.get(f) or "").strip()
         if v and not (f == "category" and v == "기타" and exp.category not in ("", "기타")):
-            setattr(exp, f, v if f != "category" or v in CATEGORIES else "기타")
+            setattr(exp, f, normalize_category(v) if f == "category" else v)
     for f in Experience.TEXT_FIELDS:
         new = fields.get(f) or ""
         if f == "keywords":
@@ -109,11 +109,6 @@ def certificate_from_item(item: dict) -> dict:
 
 
 # ── TOP 3 에서 빼기 ──────────────────────────────────────────────────
-
-def excluded_ids(role_code: str) -> set[int]:
-    from .models import TopExclusion
-    return {x.experience_id for x in owned(TopExclusion).filter(TopExclusion.role_code == role_code)}
-
 
 # ── 자소서 어필 코멘트 ───────────────────────────────────────────────
 

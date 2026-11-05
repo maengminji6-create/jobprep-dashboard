@@ -14,7 +14,7 @@ def test_split_experiences_by_headers():
         items = split_experiences(f.read())
     assert len(items) == 3
     assert items[0]["period"].startswith("2025.07")
-    assert items[0]["category"] == "인턴·실무"
+    assert items[0]["category"] == "인턴·직장 경험"
 
 
 def test_analyze_scores_trade_roles():
@@ -31,8 +31,8 @@ def test_upload_txt_creates_experiences(auth_client, user):
     r = auth_client.post("/experiences/upload", data=data, content_type="multipart/form-data", follow_redirects=True)
     assert r.status_code == 200
     assert db.session.query(Experience).filter_by(user_id=user.id).count() == 3
-    page = auth_client.get("/experiences/?role=customs").get_data(as_text=True)
-    assert "관세·통관 TOP 3 경험" in page
+    page = auth_client.get("/experiences/").get_data(as_text=True)
+    assert "AI 분석 완료" in page and "<b>3</b>개" in page  # 홈 대시보드에 바로 반영
 
 
 def test_posting_analysis_with_pasted_text(auth_client, user):
@@ -79,7 +79,7 @@ def test_parse_spreadsheet_maps_columns():
     assert len(items) == 2
     first = items[0]
     assert first["title"] == "포워딩사 인턴"
-    assert first["category"] == "인턴·실무"
+    assert first["category"] == "인턴·직장 경험"
     assert first["organization"] == "OO로지스"
     assert first["period"] == "2025.01 ~ 2025.06"
     assert first["content"] == "종류: 인턴\nFCL 부킹과 선적 스케줄 관리"
@@ -100,7 +100,7 @@ def test_parse_spreadsheet_with_stacked_tables():
     ])
     _, items = parse_spreadsheet("경험.xlsx", data)
     assert [i["title"] for i in items] == ["LG 호주 법인 · 인턴(BOP CE)", "세븐일레븐 · 편의점/알바", "RISE", "버디"]
-    assert [i["category"] for i in items] == ["인턴·실무", "아르바이트", "공모전·수상", "봉사"]
+    assert [i["category"] for i in items] == ["인턴·직장 경험", "아르바이트", "공모전·수상", "기타"]
     assert items[0]["period"] == "2025.04 ~ 2025.08 (4개월)"
     assert items[0]["role"] == "S&OP 회의, 장기재고 계산" and items[0]["keywords"] == "꼼꼼함"
     assert "3명" in items[2]["content"] and items[2]["keywords"] == "#탄소국경조정제도"
@@ -126,7 +126,7 @@ def test_upload_sample_docx(auth_client, user):
     auth_client.post("/experiences/upload", data=data, content_type="multipart/form-data")
     from app.experiences.models import Certificate
     cats = {e.category for e in db.session.query(Experience).filter_by(user_id=user.id)}
-    assert {"인턴·실무", "프로젝트"} <= cats and "자격증·어학" not in cats
+    assert {"인턴·직장 경험", "프로젝트"} <= cats and "자격증·어학" not in cats
     assert db.session.query(Certificate).filter_by(user_id=user.id).count() >= 1  # 자격증 행은 자격증으로
 
 
@@ -146,8 +146,8 @@ def test_save_adds_and_merges_into_existing(auth_client, user):
     assert exp.role == "장기재고 계산\nS&OP 회의 참여"
     assert exp.strengths == "리포트 작성 시간 50% 단축" and exp.reflection == "숫자로 말하는 습관"
     assert exp.keyword_list == ["꼼꼼함", "엑셀", "S&OP"]
-    page = auth_client.get("/experiences/?role=scm").get_data(as_text=True)
-    assert "글로벌 SCM TOP 3 경험" in page and "LG 호주 법인 인턴" in page
+    page = auth_client.get("/experiences/").get_data(as_text=True)
+    assert "최근 등록한 경험" in page and "LG 호주 법인 인턴" in page
 
 
 def test_reupload_updates_instead_of_duplicating(auth_client, user):
@@ -171,3 +171,21 @@ def test_split_by_title_then_period_line():
     items = split_experiences(text)
     assert [i["title"] for i in items] == ["LG 호주 법인 인턴", "무역 동아리 회장"]
     assert items[0]["period"] == "2025.04.22.~2025.08.21."
+
+
+def test_old_categories_map_to_seven_types(auth_client, user):
+    """예전 분류(파일·저장본·직접 입력)는 7개 유형으로 바뀜. 해외경험·봉사 → 기타, 동아리·학회 → 대외활동."""
+    from app.experiences.models import CATEGORIES, normalize_category
+    assert len(CATEGORIES) == 7
+    assert [normalize_category(c) for c in ("인턴·실무", "동아리·학회", "교육·수료", "해외경험", "봉사", "없는 분류")] == \
+        ["인턴·직장 경험", "대외활동", "교육·자격증", "기타", "기타", "기타"]
+    from app.experiences.parser import parse_spreadsheet
+    from openpyxl import Workbook
+    import io
+    wb = Workbook()
+    for r in [["경험명", "분류", "나의 역할"], ["멘토링 봉사", "봉사", "외국인 유학생 도움"], ["무역 학회", "동아리·학회", "세미나 발표"]]:
+        wb.active.append(r)
+    buf = io.BytesIO(); wb.save(buf)
+    _text, items = parse_spreadsheet("a.xlsx", buf.getvalue())
+    assert [i["category"] for i in items] == ["기타", "대외활동"]
+    assert "종류: 봉사" in items[0]["content"]  # 원래 적은 종류는 분석에 쓰도록 남김

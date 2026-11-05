@@ -5,26 +5,16 @@
 """
 import re
 
-# 역량 이름 → 내 글에서 찾는 단서
-COMPETENCIES = {
-    "글로벌 커뮤니케이션": ["영어", "중국어", "일본어", "해외", "바이어", "현지", "외국인", "통역", "번역", "영문", "글로벌"],
-    "무역 실무": ["수출", "수입", "선적", "통관", "인코텀즈", "신용장", "오더", "원산지", "b/l", "포워딩"],
-    "고객 응대": ["고객", "응대", "cs", "클레임", "컴플레인", "상담", "문의"],
-    "협업·조율": ["협업", "조율", "소통", "회의", "팀원", "부서", "협의", "공유"],
-    "문제 해결": ["문제", "해결", "개선", "원인", "대안", "극복", "보완"],
-    "데이터 분석": ["엑셀", "데이터", "분석", "통계", "리포트", "피벗", "vlookup", "sql", "파이썬"],
-    "기획·실행력": ["기획", "제안", "실행", "추진", "설계", "구상", "도입"],
-    "리더십": ["팀장", "리더", "회장", "대표", "이끌", "총괄"],
-    "꼼꼼함·문서 관리": ["서류", "문서", "정리", "검수", "체크", "기록", "회의록", "관리"],
-    "책임감·성실함": ["책임", "마감", "끝까지", "성실", "꾸준", "기한"],
-}
+from ..core.competencies import CLUES as COMPETENCIES  # 역량 이름 → 내 글에서 찾는 단서(공통 기준표)
 
 STAR_QUESTIONS = {
-    "star_situation": "언제·어디서·어떤 상황이었나요? (예: 인턴 2개월 차, 호주 법인 영업팀에서)",
-    "star_task": "맡은 과제나 해결해야 했던 문제는 무엇이었나요?",
-    "star_action": "내가 직접 한 행동을 순서대로 적어 주세요. 팀이 한 일과 내가 한 일을 나눠 적으면 좋아요.",
+    "star_situation": "언제·어디서·어떤 상황이었나요? 어떤 문제가 있었나요? (예: 인턴 2개월 차, 호주 법인 영업팀에서)",
+    "star_task": "내가 맡은 역할과 해결해야 했던 과제·목표는 무엇이었나요?",
+    "star_action": "내가 직접 한 행동과 해결 과정을 순서대로 적어 주세요. 팀이 한 일과 내가 한 일을 나눠 적으면 좋아요.",
     "star_result": "결과는 어땠나요? 바뀐 점이나 받은 피드백을 적어 주세요.",
 }
+SELF_WORDS = ("내가", "제가", "직접", "혼자", "스스로", "담당")
+TEAM_WORDS = ("우리", "팀원들", "팀이", "함께")
 NUMBER = re.compile(r"\d")
 
 
@@ -57,9 +47,21 @@ def suggest_competencies(exp, limit: int = 6) -> list[dict]:
 
 
 def star_gaps(exp) -> list[dict]:
-    """비어 있는 STAR 칸과 채울 때 도움이 되는 질문. 결과에 숫자가 없으면 있을 때만 적으라고 안내."""
+    """비어 있거나 약한 STAR 칸과 채울 때 도움이 되는 질문(규칙 기반, 내용을 지어 주지 않음).
+    결과에 숫자가 없으면 '실제로 잰 값이 있을 때만' 적으라고 안내."""
     gaps = [{"field": f, "label": exp.TEXT_LABELS[f], "question": q}
             for f, q in STAR_QUESTIONS.items() if not (getattr(exp, f) or "").strip()]
+    notes = " ".join(getattr(exp, f) or "" for f in ("role", "content", "strengths", "reflection")).strip()
+    if exp.star_filled == 0 and notes:
+        gaps.insert(0, {"field": "star_situation", "label": "자유 기록 → STAR",
+                        "question": "자유 기록에 적은 글이 있어요. 그 글을 상황·과제·행동·결과로 나눠 옮겨 보세요."})
+    action = (exp.star_action or "").strip()
+    if action and len(action) < 30:
+        gaps.append({"field": "star_action", "label": exp.TEXT_LABELS["star_action"],
+                     "question": "행동이 짧아요. 내가 직접 한 일을 순서대로 2~3가지 적어 주세요."})
+    elif action and any(w in action for w in TEAM_WORDS) and not any(w in action for w in SELF_WORDS):
+        gaps.append({"field": "star_action", "label": exp.TEXT_LABELS["star_action"],
+                     "question": "팀이 한 일만 보여요. 그중 내가 맡아서 한 일이 무엇인지 나눠 적어 주세요."})
     result = (exp.star_result or "").strip()
     if result and not NUMBER.search(result):
         gaps.append({"field": "star_result", "label": exp.TEXT_LABELS["star_result"],
@@ -82,13 +84,17 @@ def check_draft(draft: dict, source: str) -> tuple[dict, list[str]]:
 
 
 def experience_usage(exp) -> dict:
-    """이 경험이 쓰인 곳: 근거로 쓰인 공고(요건 수) · 답변에 쓴 자소서 문항. 저장된 분석·답변에서 바로 계산."""
+    """이 경험이 쓰인 곳: 근거로 쓰인 공고(요건 수) · 답변에 쓴 자소서 문항. 저장된 분석·답변에서 바로 계산.
+    공고·면접은 쉬는 기능(LEGACY_FEATURES)이 꺼져 있으면 세지 않음(열 수 없는 화면으로 연결하지 않도록)."""
+    from flask import current_app
+
     from ..applications.models import ApplicationRecord
     from ..applications.services import used_experiences
     from ..core.scoping import owned
     from .models import PostingAnalysis
+    legacy = current_app.config["LEGACY_FEATURES"]
     postings = []
-    for pa in owned(PostingAnalysis).order_by(PostingAnalysis.created_at.desc()).all():
+    for pa in owned(PostingAnalysis).order_by(PostingAnalysis.created_at.desc()).all() if legacy else []:
         r = pa.result
         support = next((s for s in (r.get("requirements") or {}).get("support", []) if s.get("id") == exp.id), None)
         recommended = any(x.get("id") == exp.id for x in r.get("recommendations", []))
@@ -102,7 +108,7 @@ def experience_usage(exp) -> dict:
                 essays.append({"id": rec.id, "company": rec.company, "question": item.get("q") or "문항"})
     from ..interview.models import InterviewQuestion, InterviewSession
     interviews = []
-    for q in owned(InterviewQuestion).order_by(InterviewQuestion.created_at.desc()).all():
+    for q in owned(InterviewQuestion).order_by(InterviewQuestion.created_at.desc()).all() if legacy else []:
         if exp.id in q.exp_id_list and (q.answer or "").strip():
             s = owned(InterviewSession).filter(InterviewSession.id == q.session_id).first()
             if s:

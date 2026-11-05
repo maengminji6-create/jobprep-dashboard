@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+{% from "components/macros.html" import csrf, meter, delete_button, empty, comment_box, ring %}
+{% block title %}경험 관리{% endblock %}
+
+{% macro block_head(num, title, desc) %}
+<div class="block-head">
+  <div class="title"><span class="num">{{ num }}</span><div><h2>{{ title }}</h2><p>{{ desc }}</p></div></div>
+  {{ caller() if caller }}
+</div>
+{% endmacro %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <span class="eyebrow">Experience</span>
+    <h1>경험 관리</h1>
+    <p>경험을 등록·수정하고 종류별로 모아 봐요. 경험을 누르면 STAR로 정리할 수 있어요.</p>
+  </div>
+  <div class="row" style="gap:10px">
+    <a class="btn secondary" href="#tab-file">⤒ 파일 올리기</a>
+    <a class="btn" href="#tab-exp">＋ 경험 추가</a>
+  </div>
+</div>
+
+<nav class="section-nav" aria-label="섹션 바로가기">
+  <a href="#browse"><b>01</b>종류별 모아보기</a>
+  <a href="#certs"><b>02</b>자격증·어학</a>
+  <a href="#manage"><b>03</b>이력 추가·관리</a>
+</nav>
+
+{% if exps %}
+{# ── 01 종류별 모아보기 ── #}
+<section class="block reveal" id="browse">
+  {% call block_head('01', '종류별 모아보기', '종류를 골라 모아 보고, 경험마다 자소서 코멘트를 받을 수 있어요.') %}
+    <form method="get" action="{{ url_for('experiences.manage') }}" class="row comment-role" style="gap:6px">
+      <label for="cmt-role" class="muted" style="font-size:.78rem">코멘트 기준 직무{% if auto_role %} (자동 추천){% endif %}</label>
+      <select id="cmt-role" name="role" onchange="this.form.submit()">{% for r in roles %}<option value="{{ r.code }}" {{ 'selected' if r.code == role }}>{{ r.name }}</option>{% endfor %}</select>
+      <noscript><button class="btn ghost sm" type="submit">바꾸기</button></noscript>
+    </form>
+  {% endcall %}
+  <div class="filter-chips" role="tablist" aria-label="이력 종류">
+    <button type="button" data-filter="all" aria-pressed="true">전체 <b>{{ exps|length }}</b></button>
+    {% for c, n in cat_counts.items() %}<button type="button" data-filter="{{ c }}" aria-pressed="false">{{ c }} <b>{{ n }}</b></button>{% endfor %}
+  </div>
+  <div class="exp-grid">
+    {% for e in exps|sort(attribute='id') %}{% set a = analyses[e.id] %}{% set c = comments[e.id] %}
+    <article class="card exp-card" data-category="{{ e.category }}">
+      <div class="exp-card-head">
+        <span class="badge">{{ e.category }}</span>
+        <span class="muted" style="font-size:.76rem">{{ e.period }}</span>
+      </div>
+      <h3>{{ e.title }}</h3>
+      {% if e.organization and e.organization not in e.title %}<p class="muted" style="font-size:.78rem;margin:0">{{ e.organization }}</p>{% endif %}
+      {% if e.role %}<div class="clip">{{ e.role }}</div>{% endif %}
+      <p class="star-dots" aria-label="STAR {{ e.star_filled }}/4칸">{% for f in e.STAR_FIELDS %}<i class="{{ 'on' if e[f] and e[f].strip() }}" title="{{ e.TEXT_LABELS[f] }}">{{ 'STAR'[loop.index0] }}</i>{% endfor %}
+        <small>{{ 'STAR 완성' if e.star_filled == 4 else 'STAR ' ~ e.star_filled ~ '/4칸' }}</small></p>
+      <div class="chips">{% for k in e.keyword_list[:4] %}<span class="chip">{{ k }}</span>{% endfor %}</div>
+      <div class="exp-card-foot">
+        <details class="cmt"><summary>{{ '✦ AI 코멘트' if c.ai else '코멘트' }}{% if c.ai and not c.fresh %} · 갱신 필요{% endif %}</summary>
+          {{ comment_box(c, e.id, role, ai_enabled, 'browse') }}</details>
+        <span style="margin-left:auto;white-space:nowrap"><a class="btn ghost sm" href="{{ url_for('experiences.edit', exp_id=e.id) }}">수정</a>{{ delete_button(url_for('experiences.delete', exp_id=e.id)) }}</span>
+      </div>
+    </article>
+    {% endfor %}
+  </div>
+</section>
+{% else %}
+<section class="block" id="browse">
+  <div class="card">{{ empty('아직 등록된 경험이 없어요', '아래 03에서 경험을 직접 추가하거나 경험정리 파일을 올려 보세요.') }}</div>
+</section>
+{% endif %}
+
+{# ── 02 자격증·어학 ── #}
+<section class="block reveal" id="certs">
+  {% call block_head('02', '자격증·어학', '경험과 따로 관리해요. 자격증마다 ' ~ role_name ~ ' 관련도를 보여 주고, 관련 직무 적합도에 가산점으로 반영돼요.') %}
+    <a class="btn secondary sm" href="#tab-cert">＋ 자격증 추가</a>
+  {% endcall %}
+  {% if certs %}
+  <div class="grid grid-3">
+    {% for v in certs %}{% set c = v.c %}
+    <article class="card cert-card">
+      <div class="cert-top">
+        <div><h3>{{ c.name }}</h3>
+          <p class="muted" style="font-size:.8rem;margin:2px 0 0">{{ [c.score, c.acquired, c.issuer]|select|join(' · ') or '점수·취득일 미입력' }}</p></div>
+        {{ ring(v.rel, '관련도', 'soft' if v.rel < 50 else '') }}
+      </div>
+      <p class="cert-why">{{ v.reason }}{% if not v.known %} <span class="badge">추정</span>{% endif %}</p>
+      {% if v.top %}<div class="chips">{% for name, score in v.top %}<span class="chip {{ 'on' if loop.first }}">{{ name }} {{ score }}</span>{% endfor %}</div>{% endif %}
+      <div class="exp-card-foot">
+        <span style="margin-left:auto;white-space:nowrap"><a class="btn ghost sm" href="{{ url_for('experiences.edit_certificate', cert_id=c.id) }}">수정</a>{{ delete_button(url_for('experiences.delete_certificate', cert_id=c.id)) }}</span>
+      </div>
+    </article>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="card">{{ empty('아직 자격증·어학이 없어요', '국제무역사, 무역영어, TOEIC·OPIc 등을 추가하면 관련 직무 적합도에 반영돼요.') }}</div>
+  {% endif %}
+</section>
+
+{# ── 03 이력 추가·관리 ── #}
+<section class="block reveal" id="manage">
+  {{ block_head('03', '이력 추가·관리', '경험·자격증을 추가하고, 지금 이력을 저장해 두었다가 언제든 다시 불러올 수 있어요.') }}
+  {% include "experiences/_manage.html" %}
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// 03 탭: 버튼 클릭 또는 주소의 #tab-이름 으로 열기
+(function () {
+  var buttons = document.querySelectorAll(".tabs [data-tab]");
+  function open(name, scroll) {
+    var found = false;
+    buttons.forEach(function (b) {
+      var on = b.dataset.tab === name; found = found || on;
+      b.setAttribute("aria-selected", on ? "true" : "false");
+      document.getElementById("tab-" + b.dataset.tab).hidden = !on;
+    });
+    if (found && scroll) document.getElementById("manage").scrollIntoView();
+  }
+  buttons.forEach(function (b) { b.addEventListener("click", function () { open(b.dataset.tab); }); });
+  function fromHash() { var h = location.hash; if (h.indexOf("#tab-") === 0) open(h.slice(5), true); }
+  window.addEventListener("hashchange", fromHash); fromHash();
+})();
+// 01 종류별 필터
+(function () {
+  var chips = document.querySelectorAll(".filter-chips [data-filter]");
+  chips.forEach(function (chip) {
+    chip.addEventListener("click", function () {
+      var f = chip.dataset.filter;
+      chips.forEach(function (c) { c.setAttribute("aria-pressed", c === chip ? "true" : "false"); });
+      document.querySelectorAll(".exp-card").forEach(function (card) {
+        card.hidden = !(f === "all" || card.dataset.category === f);
+      });
+    });
+  });
+})();
+// 기존 경험을 고르면 '경험 이름'은 필요 없음
+(function () {
+  var sel = document.getElementById("target_id"), title = document.getElementById("title");
+  if (!sel) return;
+  function sync() { title.disabled = !!sel.value; title.placeholder = sel.value ? "고른 경험에 내용이 덧붙여져요" : "예: LG 호주 법인 인턴 (같은 이름이 있으면 그 경험에 합쳐져요)"; }
+  sel.addEventListener("change", sync); sync();
+})();
+</script>
+{% endblock %}

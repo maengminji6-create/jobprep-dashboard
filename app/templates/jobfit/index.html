@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% from "components/macros.html" import empty %}
+{% block title %}직무 연결{% endblock %}
+
+{% macro block_head(num, title, desc) %}
+<div class="block-head">
+  <div class="title"><span class="num">{{ num }}</span><div><h2>{{ title }}</h2><p>{{ desc }}</p></div></div>
+  {{ caller() if caller }}
+</div>
+{% endmacro %}
+
+{% macro quote(q) %}<blockquote class="src-quote"><span class="src-field">{{ q.field }}</span>“{{ q.quote }}”</blockquote>{% endmacro %}
+
+{% block content %}
+{% set job = view.job %}
+<div class="page-head">
+  <div>
+    <span class="eyebrow">Job Fit</span>
+    <h1>직무 연결</h1>
+    <p>직무마다 일반적으로 필요한 역량에 내 경험 근거를 이어 봐요. 점수 대신 무엇이 확인됐고 무엇이 비었는지 보여 드려요.</p>
+  </div>
+</div>
+
+<nav class="job-tabs" aria-label="직무 고르기">
+  {% for j in jobs %}<a href="{{ url_for('jobfit.index', job=j.code) }}" class="chip-link {{ 'on' if j.code == code }}" {{ 'aria-current=page' if j.code == code }}>{{ j.name }}</a>{% endfor %}
+</nav>
+
+<section class="block reveal">
+  <div class="card job-hero">
+    <div>
+      <h2>{{ job.name }}</h2>
+      <p class="muted">{{ job.summary }}</p>
+      <p class="job-count">필요 역량 {{ view.total }}개 중 <b>{{ view.confirmed }}개</b>가 내 경험에서 확인됐어요.</p>
+      <small class="muted">기준: 무역업 신입 {{ job.name }} 직무에서 흔히 요구하는 역량(일반 기준, 특정 회사 공고 아님)</small>
+    </div>
+  </div>
+  {% if not analyzed %}
+  <div class="card notice warn-notice">아직 AI로 분석한 경험이 없어서 확인된 역량이 없어요.
+    <a href="{{ url_for('analysis.index') }}#experiences">AI 분석에서 경험을 먼저 분석</a>하면 근거 문장과 함께 채워져요.</div>
+  {% elif analyzed < exps|length %}
+  <p class="muted small-note">경험 {{ exps|length }}개 중 {{ analyzed }}개만 분석했어요. 나머지를 분석하면 더 정확해져요.</p>
+  {% endif %}
+</section>
+
+{# ── 01 역량별 근거 ── #}
+<section class="block reveal" id="competencies">
+  {{ block_head('01', job.name ~ '에 필요한 역량', '역량마다 이 직무에서 어떻게 쓰이는지, 내 어떤 경험의 어떤 행동이 근거인지 보여 드려요.') }}
+  <div class="job-rows">
+    {% for r in view.rows %}
+    <article class="card job-row st-{{ r.status }}">
+      <div class="job-row-head">
+        <h3>{{ r.name }}</h3>
+        <span class="badge">{{ r.level }}</span>
+        <span class="badge {{ {'confirmed': 'lv-strong', 'tagged': 'lv-mid', 'missing': 'lv-weak'}[r.status] }}">{{ r.status_label }}</span>
+      </div>
+      <p class="job-use">{{ r.use }}</p>
+      {% if r['items'] %}
+      <div class="job-evi">
+        {% for i in r['items'][:3] %}
+        <div class="evi"><p><a href="{{ url_for('experiences.edit', exp_id=i.exp.id) }}">{{ i.exp.title }}</a>
+          <span class="badge {{ 'lv-strong' if i.level == '충분' else 'lv-mid' }}">근거 {{ i.level }}</span>
+          {% if i.stale %}<span class="badge warn">갱신 필요</span>{% endif %}</p>{{ quote(i.quotes[0]) }}</div>
+        {% endfor %}
+        {% if r['items']|length > 3 %}<small class="muted">외 {{ r['items']|length - 3 }}개 경험</small>{% endif %}
+      </div>
+      {% endif %}
+      {% if r.tagged %}
+      <p class="small-note">태그만 단 경험 · {% for e in r.tagged %}<a href="{{ url_for('analysis.index') }}#experiences">{{ e.title }}</a>{{ ', ' if not loop.last }}{% endfor %}
+        <span class="muted">— 근거 문장이 없어 확정하지 않았어요. AI 분석으로 확인해 보세요.</span></p>
+      {% endif %}
+      {% if r.status == 'missing' %}<p class="need">아직 경험에서 확인되지 않아요. 이런 경험이 있었다면 정리해 보세요: {{ r.gap }}</p>{% endif %}
+    </article>
+    {% endfor %}
+  </div>
+</section>
+
+{# ── 02 연결되는 경험 ── #}
+<section class="block reveal" id="experiences">
+  {{ block_head('02', '연결되는 경험', '이 직무 요구 역량을 보여 준 경험이에요. 같은 경험도 직무에 따라 드러나는 역량이 달라져요.') }}
+  <div class="grid grid-2">
+    <div class="card"><h3>근거가 확인된 경험</h3>
+      {% if view.related %}<ul class="use-list">{% for x in view.related %}
+        <li><a href="{{ url_for('experiences.edit', exp_id=x.exp.id) }}">{{ x.exp.title }}</a><small>{{ x.competencies|join(' · ') }}</small></li>
+      {% endfor %}</ul>
+      {% else %}<p class="muted">아직 없어요.</p>{% endif %}</div>
+    <div class="card"><h3>내가 이 직무와 관련 있다고 표시한 경험</h3>
+      {% if view.marked %}<ul class="use-list">{% for e in view.marked %}
+        <li><a href="{{ url_for('experiences.edit', exp_id=e.id) }}">{{ e.title }}</a><small>{{ e.category }}</small></li>
+      {% endfor %}</ul>
+      {% else %}<p class="muted">경험 수정 화면의 '관련 직무'에서 표시할 수 있어요. 한 경험을 여러 직무에 표시해도 돼요.</p>{% endif %}</div>
+  </div>
+</section>
+
+{# ── 03 강점 활용 ── #}
+<section class="block reveal" id="strengths">
+  {{ block_head('03', job.name ~ '에서 내 강점 쓰는 법', '진단 강점에 연결된 경험에서 확인된 역량을 이 직무의 쓰임으로 옮겨 봤어요.') }}
+  {% if not profile %}
+  <div class="card">{{ empty('강점 진단 결과가 아직 없어요', 'AI 분석 03에서 진단 결과를 등록하고 경험과 연결하면 여기에 나타나요.') }}</div>
+  {% else %}
+  <div class="grid grid-2">
+    {% for s in view.strengths %}
+    <article class="card">
+      <div class="card-head"><h3>{{ s.name }}</h3><span class="badge">진단 기반</span></div>
+      {% if s.summary %}<p class="muted" style="font-size:.82rem;margin:0 0 8px">{{ s.summary }}</p>{% endif %}
+      {% if s.uses %}
+      <ul class="comp-evi">{% for u in s.uses %}
+        <li><b>{{ u.name }}</b>{% if u.weak %} <span class="badge lv-weak">근거 약함</span>{% endif %}
+          <small>{{ u.use }}</small><small class="muted">근거 경험 · {{ u.exps|map(attribute='title')|join(', ') }}</small></li>
+      {% endfor %}</ul>
+      {% elif not s.linked %}<p class="need">연결된 경험이 없어 이 직무 활용을 말하기 어려워요. <a href="{{ url_for('analysis.index') }}#links">경험과 연결하기</a></p>
+      {% elif s.unanalyzed %}<p class="need">연결된 경험을 AI로 분석하면 이 직무에서의 쓰임을 보여 드려요.</p>
+      {% else %}<p class="muted">연결된 경험에서 {{ job.name }} 요구 역량은 확인되지 않았어요.</p>{% endif %}
+    </article>
+    {% endfor %}
+  </div>
+  {% endif %}
+</section>
+
+{# ── 04 보완하면 좋은 점 ── #}
+<section class="block reveal" id="gaps">
+  {{ block_head('04', '보완하면 좋은 점', '확인되지 않은 역량과, 그 역량을 보여 줄 수 있는 경험의 예예요. 실제로 했던 일만 적어 주세요.') }}
+  {% if view.missing %}
+  <div class="card"><ul class="gap-list">{% for r in view.missing %}
+    <li><b>{{ r.name }}</b> <span class="badge {{ 'lv-mid' if r.status == 'tagged' else 'lv-weak' }}">{{ r.status_label }}</span>
+      <p>{{ r.gap }}</p></li>
+  {% endfor %}</ul></div>
+  {% else %}
+  <div class="card"><p class="muted" style="margin:0">{{ job.name }}에 필요한 역량이 모두 경험에서 확인됐어요.</p></div>
+  {% endif %}
+</section>
+{% endblock %}

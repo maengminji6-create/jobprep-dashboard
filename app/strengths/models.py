@@ -15,6 +15,7 @@ class StrengthProfile(UserOwnedMixin, TimestampMixin, db.Model):
     ai_role = db.Column(db.String(40), default="")   # AI 분석 기준 직무
     ai_hash = db.Column(db.String(64), default="")   # 분석 당시 경험 내용 지문(바뀌면 '다시 분석' 표시)
     is_active = db.Column(db.Boolean, default=True, nullable=False)  # 지금 화면에 쓰는 결과지(나머지는 저장본)
+    links = db.relationship("StrengthLink", cascade="all, delete-orphan")  # AI 분석의 강점 × 경험 연결
 
     @staticmethod
     def _load(text):

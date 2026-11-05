@@ -165,73 +165,7 @@ def comment_experiences(items: list[tuple], role_name: str) -> dict[int, dict]:
     return {c["id"]: c for c in data.get("comments", []) if c.get("id") in wanted}
 
 
-# ── 강점 진단 결과 × 내 경험 연결 ──────────────────────────────────────
-
-STRENGTH_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "headline": {"type": "string"},
-        "core_message": {"type": "string"},
-        "strengths": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "name": {"type": "string"},
-                    "summary": {"type": "string"},
-                    "experiences": {
-                        "type": "array",
-                        "items": {
-                            "type": "object",
-                            "properties": {"id": {"type": "integer"}, "how": {"type": "string"}},
-                            "required": ["id", "how"],
-                            "additionalProperties": False,
-                        },
-                    },
-                    "essay_tip": {"type": "string"},
-                },
-                "required": ["name", "summary", "experiences", "essay_tip"],
-                "additionalProperties": False,
-            },
-        },
-    },
-    "required": ["headline", "core_message", "strengths"],
-    "additionalProperties": False,
-}
-
-STRENGTH_PROMPT = """당신은 취업 준비생의 강점 진단 결과와 실제 경험을 연결해 주는 커리어 코치입니다.
-
-입력: 강점 진단 결과지 텍스트, 결과지에서 뽑은 강점 이름, 지원자의 경험 목록(id 포함), 지원 직무.
-
-원칙:
-- 결과지의 설명과 경험에 적힌 사실만 근거로 씁니다. 경험에 없는 사건이나 수치를 만들지 않습니다.
-- 강점마다 그 강점이 실제로 드러난 경험을 1~3개 고르고(입력의 id 그대로), 그 경험의 어떤 행동이 근거인지 한 문장으로 씁니다.
-- 연결할 경험이 없으면 experiences 를 비우고, essay_tip 에 어떤 경험을 정리해 두면 좋을지 적습니다.
-- 모두 한국어로, 짧고 바로 쓸 수 있게 씁니다.
-
-출력:
-- headline: 이 사람을 한 줄로 표현하는 문장(결과지와 경험을 합쳐서)
-- core_message: 지원 직무 자기소개서에서 밀고 갈 핵심 메시지 2~3문장
-- strengths[]: name(결과지의 강점 이름), summary(강점 한 줄 설명), experiences[{id, how}], essay_tip(이 강점을 지원 직무 자소서에 쓰는 방법 한 문장)"""
-
-REPORT_CHAR_LIMIT = 30000
-
-
-def link_strengths_ai(report_text: str, strength_names: list[str], exps: list, role_name: str) -> tuple[dict, bool]:
-    """(결과 dict, 결과지가 길어 앞부분만 보냈는지)"""
-    truncated = len(report_text) > REPORT_CHAR_LIMIT
-    payload = [_experience_block(e, role_name, []) for e in exps]
-    prompt = PARA.join([
-        f"지원 직무: {role_name}",
-        f"결과지에서 뽑은 강점: {', '.join(strength_names) or '(뽑지 못함 — 결과지에서 직접 찾아 주세요)'}",
-        "[강점 진단 결과지]" + NL + report_text[:REPORT_CHAR_LIMIT],
-        "[경험 목록]" + NL + json.dumps(payload, ensure_ascii=False, indent=1),
-    ])
-    data = _call(STRENGTH_PROMPT, prompt, STRENGTH_SCHEMA, "strength_links")
-    valid = {e.id for e in exps}
-    for s in data.get("strengths", []):
-        s["experiences"] = [x for x in s.get("experiences", []) if x.get("id") in valid]
-    return data, truncated
+REPORT_CHAR_LIMIT = 30000  # 긴 공고 원문은 앞부분만 보냄
 
 
 # ── 이미지로 된 채용공고 읽기(비전) ─────────────────────────────────────
@@ -531,3 +465,114 @@ def interview_feedback(question: str, answer: str) -> dict:
     data["improve"] = [g for g in data.get("improve", []) if norm(g.get("quote")) and norm(g.get("quote")) in src][:3]
     data["follow_up"] = [f for f in data.get("follow_up", []) if f][:3]
     return data
+
+
+# ── 경험 분석(B): 요약·행동·해결 과정·성과·역량 — 모든 항목에 원문 인용 ─────────────────
+
+def _quoted(extra: dict | None = None) -> dict:
+    props = {"text": {"type": "string"}, "quote": {"type": "string"}, **(extra or {})}
+    return {"type": "object", "properties": props, "required": list(props), "additionalProperties": False}
+
+
+def analysis_schema(competency_names: list[str]) -> dict:
+    return {
+        "type": "object",
+        "properties": {"analyses": {"type": "array", "items": {
+            "type": "object",
+            "properties": {
+                "id": {"type": "integer"},
+                "summary": {"type": "string"},
+                "actions": {"type": "array", "items": _quoted()},
+                "problem_solving": _quoted(),
+                "results": {"type": "array", "items": _quoted()},
+                "competencies": {"type": "array", "items": {
+                    "type": "object",
+                    "properties": {"name": {"type": "string", "enum": competency_names},
+                                   "quote": {"type": "string"}, "reason": {"type": "string"}},
+                    "required": ["name", "quote", "reason"], "additionalProperties": False}},
+                "needs_info": {"type": "array", "items": {"type": "string"}},
+            },
+            "required": ["id", "summary", "actions", "problem_solving", "results", "competencies", "needs_info"],
+            "additionalProperties": False}}},
+        "required": ["analyses"],
+        "additionalProperties": False,
+    }
+
+
+ANALYSIS_PROMPT = """당신은 취업 준비생의 경험 기록을 읽고 그 안에 드러난 행동·성과·역량을 정리하는 분석가입니다.
+
+원칙(가장 중요):
+- 지원자가 적은 글에 있는 사실만 씁니다. 적혀 있지 않은 성과·수치·기간·인원·회사·업무는 절대 만들지 않습니다.
+- quote 에는 근거가 된 지원자의 글을 한 글자도 바꾸지 말고 그대로 복사합니다(한 문장 또는 구절, 4자 이상).
+  quote 를 원문에서 찾을 수 없는 항목은 버려지니, 요약하거나 고쳐 쓴 문장을 quote 에 넣지 마세요.
+- text 는 그 근거를 짧게 정리한 문장입니다. 원문에 없는 숫자를 넣지 않습니다.
+- 글에 근거가 없으면 비워 둡니다: actions·results·competencies 는 빈 배열, problem_solving 은 text·quote 모두 "".
+- needs_info: 추측하지 말고, 이 경험을 설득력 있게 쓰려면 무엇을 더 적어야 하는지 짧게(최대 4개).
+  예: "결과 정보 필요: 행동 뒤에 무엇이 달라졌는지", "본인 역할 구분 필요: 팀이 한 일과 내가 한 일".
+- competencies: 아래 목록의 이름만 쓰고, 글에 근거가 있는 것만 최대 5개. reason 은 그 문장이 왜 그 역량인지 한 문장.
+- 모두 한국어로, 짧게 씁니다.
+
+각 경험마다(id 는 입력 그대로):
+- summary: 이 경험의 핵심을 한 문장으로(사실만)
+- actions: 지원자가 직접 한 주요 행동(최대 4개)
+- problem_solving: 문제 상황과 해결 과정이 글에 있으면 한 항목, 없으면 빈 값
+- results: 글에서 확인되는 결과·성과(최대 3개)
+- competencies, needs_info"""
+
+EXP_TEXT_LIMIT = 2500  # 경험 1개당 보내는 글 길이(5개 묶음이 한 번의 요청에 들어가도록)
+
+
+def _source_block(exp) -> dict:
+    """분석용 경험 블록: 지원자가 쓴 칸만(분석기 키워드·역량 태그는 넣지 않음 → 인용이 원문에서만 나오게)."""
+    block = {"id": exp.id, "경험": exp.title, "유형": exp.category, "기관": exp.organization or "", "기간": exp.period or ""}
+    used = 0
+    for f in exp.TEXT_FIELDS:
+        v = (getattr(exp, f) or "").strip()
+        if v and used < EXP_TEXT_LIMIT:
+            block[exp.TEXT_LABELS[f]] = v[:EXP_TEXT_LIMIT - used]
+            used += len(block[exp.TEXT_LABELS[f]])
+    return block
+
+
+def analyze_experiences(exps: list, competency_names: list[str]) -> dict[int, dict]:
+    """경험 여러 개(최대 5개 권장) → {경험 id: 분석 dict}. 인용 검증은 analysis/services 에서 합니다."""
+    payload = [_source_block(e) for e in exps]
+    prompt = PARA.join([f"경험 {len(payload)}개를 각각 분석해 주세요.", "역량 이름 목록: " + ", ".join(competency_names),
+                        json.dumps(payload, ensure_ascii=False, indent=1)])
+    data = _call(ANALYSIS_PROMPT, prompt, analysis_schema(competency_names), "experience_analysis")
+    wanted = {e.id for e in exps}
+    return {a["id"]: a for a in data.get("analyses", []) if a.get("id") in wanted}
+
+
+# ── 진단 강점 × 경험 연결(C) ─────────────────────────────────────────
+
+LINK_SCHEMA = {
+    "type": "object",
+    "properties": {"links": {"type": "array", "items": {
+        "type": "object",
+        "properties": {"strength": {"type": "string"}, "experience_id": {"type": "integer"}, "quote": {"type": "string"},
+                       "reason": {"type": "string"}, "evidence": {"type": "string", "enum": ["충분", "보통", "약함"]}},
+        "required": ["strength", "experience_id", "quote", "reason", "evidence"], "additionalProperties": False}}},
+    "required": ["links"],
+    "additionalProperties": False,
+}
+
+LINK_PROMPT = """당신은 강점 진단 결과와 지원자의 실제 경험을 비교해, 강점이 실제 행동으로 드러난 경험을 찾는 커리어 분석가입니다.
+
+원칙:
+- 강점 진단의 설명과 경험에 적힌 행동이 실제로 맞닿을 때만 연결합니다. 억지로 모든 강점을 연결하지 않습니다.
+- quote: 그 강점을 보여 주는 지원자의 글을 한 글자도 바꾸지 말고 그대로 복사합니다(원문에서 찾을 수 없으면 버려집니다).
+- reason: 그 행동이 왜 이 강점을 보여 주는지 한 문장. 경험에 없는 사실을 덧붙이지 않습니다.
+- evidence: 충분 = 구체적인 행동이 강점 설명과 직접 맞음 / 보통 = 관련 행동은 있으나 한 번·짧게 드러남 /
+  약함 = 관련은 있어 보이지만 행동이 모호해 확정하기 어려움.
+- strength 는 입력의 강점 이름을 그대로, experience_id 는 입력의 id 그대로 씁니다.
+- 한 강점에 경험 최대 3개, 한국어로 짧게."""
+
+
+def link_strengths_to_experiences(strengths: list[dict], exps: list) -> list[dict]:
+    """strengths: [{"name", "summary", "definition"}] → 연결 목록(인용 검증은 analysis/services 에서)."""
+    diag = [{"강점": s["name"], "진단 설명": s.get("definition") or s.get("summary") or ""} for s in strengths]
+    prompt = PARA.join(["[강점 진단 결과]", json.dumps(diag, ensure_ascii=False, indent=1),
+                        "[경험 목록]", json.dumps([_source_block(e) for e in exps], ensure_ascii=False, indent=1)])
+    data = _call(LINK_PROMPT, prompt, LINK_SCHEMA, "strength_experience_links")
+    return data.get("links", [])

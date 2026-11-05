@@ -30,9 +30,20 @@ def test_competency_suggestions_come_with_evidence(app, user):
 def test_star_gaps_ask_questions_and_no_number_nudge(app, user):
     e = _exp(user)
     assert {g["field"] for g in star_gaps(e)} == {"star_situation", "star_task", "star_action", "star_result"}
-    e.star_situation, e.star_task, e.star_action, e.star_result = "인턴 2개월 차", "재고 보고 지연", "엑셀 정리", "보고가 빨라짐"
+    assert "자유 기록" in star_gaps(e)[0]["label"]  # STAR가 비었는데 메모가 있으면 옮기라고 먼저 안내
+    e.star_situation, e.star_task, e.star_result = "인턴 2개월 차", "재고 보고 지연", "보고가 빨라짐"
+    e.star_action = "내가 재고 시트를 품목별로 다시 묶고 매주 엑셀 정리를 맡았다"
     gaps = star_gaps(e)
     assert len(gaps) == 1 and "실제로 잰 값" in gaps[0]["question"]  # 숫자를 지어내라고 하지 않음
+
+
+def test_star_gaps_flag_short_or_team_only_action(app, user):
+    e = _exp(user)
+    e.star_situation, e.star_task, e.star_result = "상황", "과제", "리포트 작성 시간 2시간 → 30분"
+    e.star_action = "엑셀 정리"
+    assert any("2~3가지" in g["question"] for g in star_gaps(e))
+    e.star_action = "우리 팀원들이 함께 공급업체 목록을 비교하고 단가표를 다시 만들었다"
+    assert any("내가 맡아서" in g["question"] for g in star_gaps(e))
 
 
 def test_check_draft_blocks_invented_numbers():

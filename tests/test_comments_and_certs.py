@@ -22,13 +22,13 @@ def test_add_and_update_certificate(auth_client, user):
     assert len(certs) == 1
     assert certs[0].acquired == "2025.06" and certs[0].score == "920"
     assert db.session.query(Experience).filter_by(user_id=user.id).count() == 0  # 경험과 따로 저장
-    page = auth_client.get("/experiences/?role=overseas_sales").get_data(as_text=True)
+    page = auth_client.get("/experiences/manage?role=overseas_sales").get_data(as_text=True)
     assert "자격증·어학" in page and "TOEIC" in page and "외국어 능력" in page
 
 
 def test_rule_comment_without_api_key(auth_client, user):
     e = _exp(user)
-    page = auth_client.get("/experiences/?role=forwarding").get_data(as_text=True)
+    page = auth_client.get("/experiences/manage?role=forwarding").get_data(as_text=True)
     assert "기본 코멘트" in page and "AI 코멘트 받기" not in page
     r = auth_client.post("/experiences/comments", data={"exp_id": e.id, "role": "forwarding"}, follow_redirects=True)
     assert "OPENAI_API_KEY" in r.get_data(as_text=True)
@@ -61,7 +61,7 @@ def test_ai_comment_saved_and_marked_stale(app, auth_client, user, monkeypatch):
 
     # 경험을 고치면 '바뀌었어요' 표시
     auth_client.post("/experiences/save", data={"target_id": e.id, "strengths": "운임 8% 절감"})
-    page = auth_client.get("/experiences/?role=forwarding").get_data(as_text=True)
+    page = auth_client.get("/experiences/manage?role=forwarding").get_data(as_text=True)
     assert "경험 내용이 바뀌었어요" in page
 
     # 경험을 지우면 코멘트도 함께 삭제
@@ -95,7 +95,7 @@ def test_delete_upload_and_reset_all(auth_client, user):
     _upload_xlsx(auth_client, [["경험명", "나의 역할"], ["포워딩 인턴", "FCL 부킹"], ["무역사무 알바", "인보이스 작성"]])
     _exp(user, title="직접 넣은 경험")
     up = db.session.query(ExperienceUpload).filter_by(user_id=user.id).one()
-    page = auth_client.get("/experiences/").get_data(as_text=True)
+    page = auth_client.get("/experiences/manage").get_data(as_text=True)
     assert "a.xlsx" in page and "지금 남은 경험 2개" in page
 
     auth_client.post(f"/experiences/uploads/{up.id}/delete")

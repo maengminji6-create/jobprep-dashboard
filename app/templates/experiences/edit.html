@@ -10,7 +10,7 @@
     <form method="post" action="{{ url_for('experiences.structure', exp_id=exp.id) }}" data-ai-form>{{ csrf() }}
       <button class="btn secondary" type="submit">✦ AI로 STAR 초안 만들기</button></form>
     {% endif %}
-    <a class="btn secondary" href="{{ url_for('experiences.index') }}#browse">← 경험 분석</a>
+    <a class="btn secondary" href="{{ url_for('experiences.manage') }}#browse">← 경험 관리</a>
   </div>
 </div>
 
@@ -27,20 +27,12 @@
         <div class="field"><label for="f-org">기관·회사</label><input id="f-org" type="text" name="organization" value="{{ exp.organization or '' }}"></div>
         <div class="field"><label for="f-period">기간</label><input id="f-period" type="text" name="period" value="{{ exp.period or '' }}" placeholder="예: 2025.04 ~ 2025.08"></div>
       </div>
-    </section>
-
-    <section class="card">
-      <h2>경험 기록</h2>
-      <div class="grid grid-2" style="gap:12px">
-        {% for f in exp.BASE_FIELDS if f != 'keywords' %}
-        <div class="field"><label for="f-{{ f }}">{{ exp.TEXT_LABELS[f] }}</label>
-          <textarea id="f-{{ f }}" name="{{ f }}" style="min-height:{{ 180 if f == 'content' else 120 }}px">{{ exp[f] or '' }}</textarea></div>
-        {% endfor %}
-      </div>
+      <div class="field"><label for="f-role">나의 역할</label>
+        <textarea id="f-role" name="role" style="min-height:70px" placeholder="예: 영업팀 인턴, 바이어 메일 응대 담당">{{ exp.role or '' }}</textarea></div>
     </section>
 
     <section class="card star-card" id="star">
-      <div class="card-head"><h2>STAR로 정리</h2>
+      <div class="card-head"><h2>STAR로 정리 <span class="badge">{{ exp.star_filled }}/4칸</span></h2>
         <small>{{ '✦ AI 초안이에요. 내 글에서만 옮겼는지 확인하고 저장하세요.' if draft else '비워 둔 칸은 오른쪽 질문을 보고 채워 보세요.' }}</small></div>
       {% if draft_notes %}<div class="check-box"><b>초안에서 뺀 부분</b><ul>{% for n in draft_notes %}<li>{{ n }}</li>{% endfor %}</ul></div>{% endif %}
       <div class="star-grid">
@@ -48,7 +40,7 @@
         {% set v = draft[f] if draft and draft[f] else (exp[f] or '') %}
         <div class="field star-{{ loop.index }}"><label for="f-{{ f }}"><b class="star-letter">{{ 'STAR'[loop.index0] }}</b> {{ exp.TEXT_LABELS[f]|replace(' (' ~ 'STAR'[loop.index0] ~ ')', '') }}
           {% if draft and draft[f] and draft[f] != (exp[f] or '') %}<span class="badge ai">AI 초안</span>{% endif %}</label>
-          <textarea id="f-{{ f }}" name="{{ f }}" class="{{ 'is-draft' if draft and draft[f] }}">{{ v }}</textarea></div>
+          <textarea id="f-{{ f }}" name="{{ f }}" class="{{ 'is-draft' if draft and draft[f] }}" placeholder="{{ star_hints[f] }}">{{ v }}</textarea></div>
         {% endfor %}
       </div>
       {% if ai_questions %}
@@ -57,7 +49,17 @@
     </section>
 
     <section class="card">
-      <h2>핵심 역량 · 관련 직무</h2>
+      <div class="card-head"><h2>자유 기록</h2><small>STAR에 넣기 전의 메모·원문. 파일에서 읽은 글도 여기에 있어요.</small></div>
+      <div class="grid grid-2" style="gap:12px">
+        {% for f in exp.BASE_FIELDS if f not in ('keywords', 'role') %}
+        <div class="field"><label for="f-{{ f }}">{{ exp.TEXT_LABELS[f] }}</label>
+          <textarea id="f-{{ f }}" name="{{ f }}" style="min-height:{{ 160 if f == 'content' else 100 }}px">{{ exp[f] or '' }}</textarea></div>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>관련 역량 · 키워드 · 직무</h2>
       <div class="field"><label for="f-comp">핵심 역량 태그 <span class="muted">쉼표로 구분</span></label>
         <input id="f-comp" type="text" name="competencies" value="{{ exp.competencies or '' }}" placeholder="예: 글로벌 커뮤니케이션, 무역 실무"></div>
       {% set ai_comp = draft.competencies if draft else [] %}
@@ -101,7 +103,7 @@
         <li><a href="{{ url_for('applications.detail', rec_id=e.id) }}">{{ e.company }}</a><small>{{ e.question }}</small></li>
       {% endfor %}</ul>{% endif %}
       {% else %}
-      <p class="muted" style="font-size:.84rem">아직 이 경험을 근거로 쓴 공고·자소서가 없어요. 공고를 분석하면 요건에 맞는 경험이 자동으로 연결돼요.</p>
+      <p class="muted" style="font-size:.84rem">{% if legacy_on %}아직 이 경험을 근거로 쓴 공고·자소서가 없어요. 공고를 분석하면 요건에 맞는 경험이 자동으로 연결돼요.{% else %}아직 이 경험을 쓴 자소서가 없어요.{% endif %}</p>
       {% endif %}
     </section>
     {% if gaps %}

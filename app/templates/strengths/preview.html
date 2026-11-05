@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% from "components/macros.html" import csrf %}
+{% block title %}강점 진단 결과 확인{% endblock %}
+
+{% macro row(it, added=False) %}
+<div class="s-row {{ 'added' if added }}">
+  <input type="hidden" name="orig" value="{{ '' if added else it.name ~ '|' ~ it.summary ~ '|' ~ it.definition }}">
+  <input type="hidden" name="was_edited" value="{{ '1' if it.edited else '0' }}">
+  <div class="row">
+    <div class="field" style="flex:0 0 160px"><label>강점 이름</label><input type="text" name="name" value="{{ it.name }}" maxlength="20" placeholder="{{ '예: 주도' if added else '' }}"></div>
+    <div class="field" style="flex:2 1 280px"><label>진단 설명(한 줄)</label><input type="text" name="summary" value="{{ it.summary }}" maxlength="200"></div>
+    <div class="field" style="flex:0 0 110px"><label>저장</label>
+      <select name="keep"><option value="1">저장</option><option value="0">빼기</option></select></div>
+  </div>
+  <div class="field"><label>정의·자세한 설명 <span class="muted">(선택)</span></label><textarea name="definition" style="min-height:56px">{{ it.definition }}</textarea></div>
+  {% if not added %}
+  {% if it.snippet %}<p class="src-snippet"><span class="src-field">결과지 속 위치</span>{{ it.snippet }}</p>
+  {% elif source != 'manual' %}<p class="need">결과지 글에서 이 이름을 찾지 못했어요. 맞는 강점인지 확인해 주세요.</p>{% endif %}
+  {% if it.edited %}<span class="badge">직접 고친 항목</span>{% endif %}
+  {% endif %}
+</div>
+{% endmacro %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <span class="eyebrow">Check Before Saving</span>
+    <h1>{{ '강점 진단 결과 고치기' if profile else '추출 결과 확인' }}</h1>
+    <p>{% if source == 'manual' %}적은 강점을 확인해 주세요.{% else %}결과지에서 읽은 강점이에요. 문서에 있는 내용만 옮겼어요. 틀린 곳을 고친 뒤 저장해 주세요.{% endif %}</p>
+  </div>
+  <a class="btn secondary" href="{{ url_for('strengths.index') }}">취소</a>
+</div>
+
+{% if not profile %}
+{% if parsed.method == 'dictionary' %}
+<div class="card notice warn-notice"><b>결과지 형식을 알아보지 못했어요.</b>
+  강점 목록을 찾지 못해, 결과지에 여러 번 나온 강점 단어로 <b>추정</b>했어요. 진단의 실제 강점과 다를 수 있으니 꼭 확인해 주세요.</div>
+{% elif not items %}
+<div class="card notice warn-notice"><b>강점 이름을 찾지 못했어요.</b> 아래 빈 칸에 결과지의 강점을 직접 옮겨 적어 주세요.</div>
+{% endif %}
+{% endif %}
+
+<form method="post" action="{{ url_for('strengths.confirm') }}" class="preview-form">
+  {{ csrf() }}
+  <input type="hidden" name="source" value="{{ source }}">
+  <input type="hidden" name="method" value="{{ parsed.method or source }}">
+  {% if profile %}<input type="hidden" name="profile_id" value="{{ profile.id }}">{% endif %}
+  <textarea name="source_text" hidden>{{ text }}</textarea>
+
+  <section class="card">
+    <div class="card-head"><h2>출처</h2><span class="badge">{{ sources[source] }}</span></div>
+    <div class="row">
+      <div class="field" style="flex:2 1 260px"><label>이름</label><input type="text" name="filename" value="{{ filename }}" maxlength="255"></div>
+      <div class="field"><label>진단 도구 <span class="muted">(선택)</span></label><input type="text" name="tool" value="{{ parsed.tool or '' }}" placeholder="예: 갤럽 강점, 9WAY" maxlength="60"></div>
+    </div>
+    {% if parsed.area or parsed.role or source != 'manual' %}
+    <div class="row">
+      <div class="field"><label>강점이 나타날 때 <span class="muted">(결과지에 있을 때만)</span></label><input type="text" name="area" value="{{ parsed.area or '' }}" maxlength="200"></div>
+      <div class="field"><label>강점 역할 <span class="muted">(결과지에 있을 때만)</span></label><input type="text" name="role" value="{{ parsed.role or '' }}" maxlength="200"></div>
+    </div>
+    {% endif %}
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2>강점 {{ items|length }}개</h2><small>최대 {{ max_strengths }}개 · '빼기'를 고르면 저장하지 않아요</small></div>
+    <div class="s-rows">
+      {% for it in items %}{{ row(it) }}{% endfor %}
+      {% for _ in range([2, max_strengths - items|length]|min) %}{{ row({'name': '', 'summary': '', 'definition': ''}, True) }}{% endfor %}
+    </div>
+    <p class="muted small-note">빈 칸은 강점을 직접 더할 때 쓰세요. 이름을 비워 두면 저장하지 않아요.</p>
+  </section>
+
+  {% if text and source != 'manual' %}
+  <details class="card text-box"><summary>결과지에서 읽은 글 보기 ({{ '{:,}'.format(text|length) }}자)</summary>
+    <pre class="src-text">{{ text[:6000] }}{% if text|length > 6000 %}
+…(앞 6,000자만 보여요){% endif %}</pre></details>
+  {% endif %}
+
+  <div class="form-actions"><button class="btn" type="submit">{{ '고친 내용 저장' if profile else '확인하고 저장' }}</button></div>
+</form>
+{% endblock %}

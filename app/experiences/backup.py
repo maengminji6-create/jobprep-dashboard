@@ -10,7 +10,7 @@ from datetime import datetime
 from ..core.job_status import normalize
 from ..core.scoping import create_owned, owned
 from ..extensions import db
-from .models import CATEGORIES, Certificate, Experience, Snapshot
+from .models import Certificate, Experience, Snapshot, normalize_category
 
 FORMAT = "growly-backup"
 VERSION = 1
@@ -60,7 +60,7 @@ def validate(data) -> dict:
     for e in exps:
         if isinstance(e, dict) and str(e.get("title", "")).strip():
             item = {f: str(e.get(f) or "") for f in EXP_FIELDS}
-            item["category"] = item["category"] if item["category"] in CATEGORIES else "기타"
+            item["category"] = normalize_category(item["category"])
             clean["experiences"].append(item)
     for c in certs:
         if isinstance(c, dict) and str(c.get("name", "")).strip():

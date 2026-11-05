@@ -12,20 +12,31 @@ from .extensions import csrf, db, login_manager, migrate  # noqa: E402
 
 NAV_ITEMS = [
     # (endpoint, 메뉴명, 아이콘 글자, 활성 표시 키)
-    ("experiences.index", "경험 분석", "✎", "experiences"),
-    ("strengths.index", "강점 연결", "✦", "strengths"),
-    ("experiences.posting", "공고 매칭", "◎", "posting"),
+    ("experiences.index", "홈", "⌂", "home"),
+    ("experiences.manage", "경험 관리", "✎", "experiences"),
+    ("analysis.index", "AI 분석", "✦", "analysis"),
+    ("jobfit.index", "직무 연결", "◎", "jobfit"),
     ("applications.index", "자소서 보관함", "▤", "applications"),
+]
+# 리뉴얼로 잠시 쉬는 기능: LEGACY_FEATURES=1 일 때만 메뉴·화면이 열림(데이터와 코드는 그대로)
+LEGACY_NAV_ITEMS = [
+    ("experiences.posting", "공고 매칭", "◎", "posting"),
     ("interview.index", "면접 준비", "◇", "interview"),
     ("schedule.index", "취업 일정", "▦", "schedule"),
 ]
 
 
+def is_legacy_endpoint(endpoint: str) -> bool:
+    return endpoint.startswith(("experiences.posting", "interview.", "schedule."))
+
+
 def _nav_key(endpoint: str) -> str:
     if endpoint.startswith("experiences.posting"):
         return "posting"
-    if endpoint.startswith("strengths."):
-        return "strengths"
+    if endpoint.startswith("jobfit."):
+        return "jobfit"
+    if endpoint.startswith(("analysis.", "strengths.")):  # 강점 진단 등록은 AI 분석의 한 단계
+        return "analysis"
     if endpoint.startswith("applications."):
         return "applications"
     if endpoint.startswith("schedule."):
@@ -34,6 +45,8 @@ def _nav_key(endpoint: str) -> str:
         return "interview"
     if endpoint.startswith("auth."):
         return ""  # 내 공간: 메뉴에 없음
+    if endpoint == "experiences.index":
+        return "home"
     return "experiences"
 
 
@@ -60,12 +73,14 @@ def create_app(config_name: str | None = None) -> Flask:
 
     from .auth import bp as auth_bp
     from .experiences import bp as experiences_bp
+    from .analysis import bp as analysis_bp
     from .applications import bp as applications_bp
     from .interview import bp as interview_bp
+    from .jobfit import bp as jobfit_bp
     from .schedule import bp as schedule_bp
     from .strengths import bp as strengths_bp
 
-    for bp in (auth_bp, experiences_bp, strengths_bp, applications_bp, interview_bp, schedule_bp):
+    for bp in (auth_bp, experiences_bp, analysis_bp, jobfit_bp, strengths_bp, applications_bp, interview_bp, schedule_bp):
         app.register_blueprint(bp)
 
     @app.route("/")
@@ -116,9 +131,18 @@ def create_app(config_name: str | None = None) -> Flask:
     from .core import ai_quota
     app.jinja_env.globals.update(ai_unavailable=ai_quota.unavailable_message, ai_available=ai_quota.available)
 
+    @app.before_request
+    def block_legacy():
+        """쉬는 기능 주소로 직접 들어와도 열리지 않게(404)."""
+        from flask import abort, request
+        if not app.config["LEGACY_FEATURES"] and is_legacy_endpoint(request.endpoint or ""):
+            abort(404)
+
     @app.context_processor
     def inject_nav():
         from flask import request
-        return {"NAV_ITEMS": NAV_ITEMS, "nav_active": _nav_key(request.endpoint or "")}
+        legacy = app.config["LEGACY_FEATURES"]
+        return {"NAV_ITEMS": NAV_ITEMS + (LEGACY_NAV_ITEMS if legacy else []), "legacy_on": legacy,
+                "nav_active": _nav_key(request.endpoint or "")}
 
     return app

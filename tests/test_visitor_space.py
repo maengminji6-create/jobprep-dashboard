@@ -25,7 +25,7 @@ def test_all_pages_render(client):
 def test_each_browser_gets_own_space(app):
     a, b = app.test_client(), app.test_client()
     _add(a, "A의 무역 인턴")
-    assert "A의 무역 인턴" not in b.get("/experiences/").get_data(as_text=True)
+    assert "A의 무역 인턴" not in b.get("/experiences/manage").get_data(as_text=True)
     assert db.session.query(User).count() == 2
 
 
@@ -33,7 +33,7 @@ def test_records_survive_restart(app, client):
     """세션 쿠키가 사라져도(브라우저·앱을 다시 켬) 오래 가는 쿠키로 같은 공간."""
     _add(client, "무역 인턴")
     client.delete_cookie("session")
-    assert "무역 인턴" in client.get("/experiences/").get_data(as_text=True)
+    assert "무역 인턴" in client.get("/experiences/manage").get_data(as_text=True)
     assert db.session.query(User).count() == 1
 
 

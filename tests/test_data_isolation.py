@@ -24,8 +24,8 @@ def test_user_cannot_access_others_data(app, client):
     db.session.refresh(exp)
     assert "내 역할" not in (exp.role or "")
 
-    page = client.get("/experiences/").get_data(as_text=True)
-    assert "비밀" not in page
+    for url in ("/experiences/", "/experiences/manage"):
+        assert "비밀" not in client.get(url).get_data(as_text=True)
 
 
 def test_user_cannot_touch_others_schedule(app, client):
@@ -78,3 +78,67 @@ def test_user_cannot_touch_others_interview(app, client):
     # 내 질문 답변에 남의 경험을 연결할 수 없음
     assert client.post(f"/interview/q/{qa.id}", data={"answer": "x", "exp_ids": [str(eb.id)]}).status_code == 404
     assert "B의 면접" not in client.get("/interview/").get_data(as_text=True)
+
+
+def test_user_cannot_touch_others_analysis_or_links(app, client):
+    import json
+
+    from app.analysis.models import ExperienceAnalysis, StrengthLink
+    from app.strengths.models import StrengthProfile
+    a = make_user("a@test.com")
+    b = make_user("b@test.com")
+    eb = Experience(user_id=b.id, title="B의 경험", star_action="B만의 비밀 행동")
+    pb = StrengthProfile(user_id=b.id, filename="b.pdf",
+                         parsed_json=json.dumps({"strengths": [{"name": "주도", "rank": 1}]}))
+    ea = Experience(user_id=a.id, title="A의 경험")
+    pa = StrengthProfile(user_id=a.id, filename="a.pdf",
+                         parsed_json=json.dumps({"strengths": [{"name": "주도", "rank": 1}]}))
+    db.session.add_all([eb, pb, ea, pa])
+    db.session.commit()
+    db.session.add(ExperienceAnalysis(user_id=b.id, experience_id=eb.id, content_hash="x",
+                                      data_json=json.dumps({"summary": "B의 분석 요약"}, ensure_ascii=False)))
+    lb = StrengthLink(user_id=b.id, profile_id=pb.id, strength_name="주도", experience_id=eb.id, quote="B만의 비밀 행동")
+    db.session.add(lb)
+    db.session.commit()
+    login(client, a.email)
+    app.config["OPENAI_API_KEY"] = "test-key"
+    for url in (f"/analysis/links/{lb.id}/edit", f"/analysis/links/{lb.id}/remove", f"/analysis/links/{lb.id}/restore"):
+        assert client.post(url, data={"reason": "x"}).status_code == 404, url
+    assert client.post("/analysis/run", data={"exp_id": eb.id}).status_code == 404
+    # 내 강점에 남의 경험을 연결할 수 없음
+    assert client.post("/analysis/links/new", data={"strength": "주도", "exp_id": eb.id}).status_code == 404
+    page = client.get("/analysis/").get_data(as_text=True)
+    assert "B의 분석 요약" not in page and "B만의 비밀 행동" not in page and "B의 경험" not in page
+
+
+def test_user_cannot_edit_others_strength_profile(app, client):
+    import json
+
+    from app.strengths.models import StrengthProfile
+    a = make_user("a@test.com")
+    b = make_user("b@test.com")
+    pb = StrengthProfile(user_id=b.id, filename="b.pdf", extracted_text="B 비밀 결과지",
+                         parsed_json=json.dumps({"strengths": [{"name": "비밀강점"}]}, ensure_ascii=False))
+    db.session.add(pb)
+    db.session.commit()
+    login(client, a.email)
+    assert client.get(f"/strengths/{pb.id}/edit").status_code == 404
+    r = client.post("/strengths/confirm", data={"profile_id": pb.id, "name": ["바꿈"], "summary": [""], "definition": [""],
+                                                "orig": [""], "keep": ["1"], "was_edited": ["0"]})
+    assert r.status_code == 404
+    db.session.refresh(pb)
+    assert pb.strengths[0]["name"] == "비밀강점"
+
+
+def test_user_cannot_open_others_strength_manual(app, client):
+    import json
+
+    from app.analysis.models import StrengthManual
+    a = make_user("a@test.com")
+    b = make_user("b@test.com")
+    row = StrengthManual(user_id=b.id, name="B의 설명서", data_json=json.dumps({"strengths": []}))
+    db.session.add(row)
+    db.session.commit()
+    login(client, a.email)
+    assert client.get(f"/analysis/manual/{row.id}").status_code == 404
+    assert client.post(f"/analysis/manual/{row.id}/delete").status_code == 404

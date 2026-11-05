@@ -32,18 +32,20 @@ def test_parse_manual_formats():
     assert parse_manual("   ")["strengths"] == []
 
 
-def test_manual_input_saves_profile_and_page_shows_links(auth_client, user):
-    db.session.add(Experience(user_id=user.id, title="AX마스터", category="프로젝트",
-                              role="마감 전 체크리스트로 꼼꼼하게 점검했다.", content="", strengths="", keywords="",
-                              reflection=""))
-    db.session.commit()
+def test_manual_input_previews_then_saves(auth_client, user):
     page = auth_client.post("/strengths/manual", data={"manual": "신중함: 잘못될 일을 미리 살펴요\n창의성"},
                             follow_redirects=True).get_data(as_text=True)
+    assert "적은 강점을 확인해 주세요" in page and 'value="잘못될 일을 미리 살펴요"' in page
+    assert db.session.query(StrengthProfile).count() == 0
+    page = auth_client.post("/strengths/confirm", data={
+        "source": "manual", "source_text": "신중함: 잘못될 일을 미리 살펴요\n창의성", "filename": "직접 입력한 강점",
+        "name": ["신중함", "창의성"], "summary": ["잘못될 일을 미리 살펴요", ""], "definition": ["", ""],
+        "orig": ["신중함|잘못될 일을 미리 살펴요|", "창의성||"], "keep": ["1", "1"], "was_edited": ["0", "0"]},
+        follow_redirects=True).get_data(as_text=True)
     assert "강점 2개를 저장했어요" in page
-    assert "강점을 증명하는 행동" in page and "체크리스트로" in page and "자소서 소재" in page
-    assert "연결된 경험 없음" in page  # 창의성은 근거가 없음
     prof = db.session.query(StrengthProfile).filter_by(user_id=user.id).one()
-    assert prof.is_active and prof.filename == "직접 입력한 강점"
+    assert prof.is_active and prof.filename == "직접 입력한 강점" and prof.parsed["source"] == "manual"
+    assert not any(s.get("edited") for s in prof.strengths)
 
 
 def test_manual_empty_is_rejected(auth_client, user):
@@ -54,7 +56,9 @@ def test_manual_empty_is_rejected(auth_client, user):
 def test_manual_profile_is_mine_only(app, client):
     a, b = make_user("a@test.com"), make_user("b@test.com")
     login(client, a.email)
-    client.post("/strengths/manual", data={"manual": "A만의 강점"})
+    client.post("/strengths/confirm", data={"source": "manual", "name": ["A만의 강점"], "summary": [""],
+                                            "definition": [""], "orig": ["A만의 강점||"], "keep": ["1"],
+                                            "was_edited": ["0"]})
     other = app.test_client()  # B는 다른 브라우저
     login(other, b.email)
     assert "A만의 강점" not in other.get("/strengths/").get_data(as_text=True)
