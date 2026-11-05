@@ -4,7 +4,7 @@
   "functions": {
     "wsgi.py": {
       "maxDuration": 300,
-      "excludeFiles": "{tests/**,samples/**,docs/**,migrations/**,instance/**,app/static/**,.venv/**}"
+      "excludeFiles": "{tests/**,samples/**,docs/**,migrations/**,instance/**,.venv/**}"
     }
   }
 }
