@@ -276,7 +276,9 @@ def split_sections(text: str) -> list[dict]:
         ln = ln.strip()
         if not ln:
             continue
-        head = next((name for name, pat in SECTION_PATTERNS if len(ln) <= 40 and pat.match(ln)), None)
+        # 짧은 제목 줄, 또는 'Requirements: …'처럼 제목 뒤에 콜론으로 내용이 이어진 줄
+        head = next((name for name, pat in SECTION_PATTERNS
+                     if (m := pat.match(ln)) and (len(ln) <= 40 or ln[m.end():].lstrip().startswith((":", "：")))), None)
         if head:
             if cur["lines"]:
                 sections.append(cur)
@@ -307,7 +309,7 @@ def _sections(text: str) -> tuple[str, str]:
 DICT_IGNORE = {"채용"}
 
 
-ANALYSIS_VERSION = 3  # 매칭 규칙이 바뀌면 올림 → 예전에 저장한 분석은 열 때 새 규칙으로 다시 분석
+ANALYSIS_VERSION = 5  # 매칭 규칙이 바뀌면 올림 → 예전에 저장한 분석은 열 때 새 규칙으로 다시 분석
 
 # 공고 키워드로 인정하는 단어: 직무 사전에서 가중치 2 이상(핵심 업무 용어) + 외국어·자격증·툴.
 # '서류·전략·홍보·소통'처럼 어느 공고에나 나오는 가중치 1 단어와 '해외·글로벌' 같은 막연한 단어는 빼서 억지 매칭을 막음.
@@ -398,6 +400,8 @@ def analyze_posting(posting_text: str, analyses: list[dict], experiences: dict, 
             "appeal": _appeal_sentence(a, points, ROLE_BY_CODE[main_role]["name"]),
         })
     recs.sort(key=lambda r: r["score"], reverse=True)
+    from .requirements import check_requirements, posting_structure
+    sections = split_sections(posting_text)
 
     return {
         "main_role": main_role, "main_role_name": ROLE_BY_CODE[main_role]["name"],
@@ -409,6 +413,9 @@ def analyze_posting(posting_text: str, analyses: list[dict], experiences: dict, 
         "strength_matches": _strength_matches(strengths or [], posting_lines),
         "cert_matches": _cert_matches(certs or [], posting_text, main_role),
         "highlight": sorted({w for r in recs[:6] for w in r["hit_required"] + r["hit_preferred"]}, key=len, reverse=True),
+        # 요건 하나하나 충족 · 확인 필요 · 근거 없음(근거 문장 포함) + 공고 구조
+        "requirements": check_requirements(sections, list(experiences.values()), certs or []),
+        "structure": posting_structure(sections, posting_text),
         "version": ANALYSIS_VERSION,
     }
 

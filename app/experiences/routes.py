@@ -722,7 +722,13 @@ def posting_detail(pa_id):
         pa.result_json = json.dumps(_analyze_text(cleaned), ensure_ascii=False)
         db.session.commit()
     elif pa.result.get("version") != ANALYSIS_VERSION:  # 예전 규칙으로 만든 분석은 새 규칙으로 다시 분석
-        pa.result_json = json.dumps(_analyze_text(pa.posting_text), ensure_ascii=False)
+        from .posting_extract import guess_deadline
+        warnings = pa.result.get("extract_warnings", [])
+        result = _analyze_text(pa.posting_text)
+        result["extract_warnings"] = warnings
+        pa.result_json = json.dumps(result, ensure_ascii=False)
+        if not pa.deadline:  # 마감일 칸이 생기기 전에 넣은 공고: 원문에서 짐작해 채움(바꿀 수 있음)
+            pa.deadline = guess_deadline(pa.posting_text + "\n" + (pa.vision.get("period") or ""))
         db.session.commit()
     ctx = _postings()
     exps, certs, profile, _linked = _match_inputs()

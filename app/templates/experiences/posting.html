@@ -224,6 +224,8 @@
       <div class="chips" style="margin-top:10px">
         <span class="chip on">{{ all_industries|selectattr(0, 'equalto', analysis.industry)|map(attribute=1)|first or '기타' }}</span>
         <span class="chip on">직무 · {{ role_map[analysis.role_code].name if analysis.role_code in role_map else r.main_role_name }}</span>
+        {% for em in (r.structure or {}).get('employment', []) %}<span class="chip">{{ em }}</span>{% endfor %}
+        {% if r.structure and r.structure.location %}<span class="chip" title="{{ r.structure.location }}">근무지 · {{ r.structure.location|truncate(28, True, '…') }}</span>{% endif %}
         {% if analysis.url %}<a class="chip" href="{{ analysis.url }}" target="_blank" rel="noopener noreferrer">공고 원문 열기 ↗</a>{% endif %}
       </div>
       {% if analysis.memo %}<p class="memo-line">📝 {{ analysis.memo }}</p>{% endif %}
@@ -242,9 +244,17 @@
       {% endif %}
     </div>
     <div class="posting-stats">
+      {% set rq = r.requirements.summary.required if r.requirements else none %}
+      {% set rp = r.requirements.summary.preferred if r.requirements else none %}
+      {% if rq and (rq.total or rp.total) %}
+      {{ ring(((rq.met * 100 / rq.total) if rq.total else 0)|round|int, '필수 충족') }}
+      <div><b>{{ rq.met }}<small>/{{ rq.total }}</small></b><span>필수 충족</span></div>
+      <div><b>{{ rp.met }}<small>/{{ rp.total }}</small></b><span>우대 충족</span></div>
+      {% else %}
       {{ ring(r.coverage, '키워드 커버') }}
       <div><b>{{ r.recommendations|length }}</b><span>추천 경험</span></div>
       <div><b>{{ (r.gaps_required|length) + (r.gaps_preferred|length) }}</b><span>보완 키워드</span></div>
+      {% endif %}
     </div>
     <div class="posting-actions">
       <form method="post" action="{{ url_for('experiences.posting_save', pa_id=analysis.id) }}">{{ csrf() }}
@@ -265,9 +275,56 @@
   </div>
 </section>
 
+{# ── 필수·우대 요건 하나하나: 충족 · 확인 필요 · 근거 없음 ── #}
+{% set q = r.requirements %}
+{% set LABEL = {'met': '충족', 'check': '확인 필요', 'none': '근거 없음'} %}
+<section class="block reveal" id="req">
+  <div class="block-head"><div class="title"><span class="num">02</span><div><h2>필수·우대 요건 확인</h2>
+    <p>요건마다 내 경험에서 근거 문장을 찾아 나눴어요. '근거 없음'은 경험 기록에 적혀 있지 않다는 뜻이에요(경험이 없다는 뜻은 아니에요).</p></div></div></div>
+  {% if q and q.enough %}
+  <div class="grid grid-2 req-grid">
+    {% for kind, title in [('required', '필수 자격요건'), ('preferred', '우대사항')] %}
+    {% set sm = q.summary[kind] %}
+    <article class="card">
+      <div class="card-head"><h3>{{ title }}</h3>
+        {% if sm.total %}<span class="req-count"><b>{{ sm.met }}</b> 충족 · {{ sm.check }} 확인 필요 · {{ sm.none }} 근거 없음</span>{% endif %}</div>
+      {% set rows = q['items']|selectattr('kind', 'equalto', kind)|list %}
+      {% if rows %}
+      <ul class="req-list">
+        {% for it in rows %}
+        <li class="req req-{{ it.status }}">
+          <div class="req-top"><span class="req-badge">{{ LABEL[it.status] }}</span><b>{{ it.text }}</b></div>
+          <p class="req-why">{{ it.reason }}</p>
+          {% for ev in it.evidence[:1] if it.status != 'none' %}
+          <p class="req-ev"><span class="ev-tag e">내 경험 · {{ ev.title }}</span><q>{{ ev.sentence|highlight(ev.words) }}</q></p>
+          {% endfor %}
+          {% if it.suggestion %}<p class="req-tip">{{ it.suggestion }}</p>{% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}<p class="muted" style="font-size:.84rem">공고에서 {{ title }} 항목을 찾지 못했어요.</p>{% endif %}
+    </article>
+    {% endfor %}
+  </div>
+  {% if q.support %}
+  <article class="card req-support">
+    <div class="card-head"><h3>자소서에 쓸 경험</h3><small>요건을 가장 많이 받쳐 주는 순서</small></div>
+    <ol>
+      {% for s in q.support %}
+      <li><b>{{ s.title }}</b> <span class="muted">· 충족 {{ s.met }}{% if s.check %} · 확인 필요 {{ s.check }}{% endif %}</span>
+        <div class="chips">{% for t in s['items'][:4] %}<span class="chip">{{ t|truncate(30, True, '…') }}</span>{% endfor %}</div></li>
+      {% endfor %}
+    </ol>
+  </article>
+  {% endif %}
+  {% else %}
+  <div class="card">{{ empty('공고에서 자격요건·우대사항을 찾지 못했어요', "원문에 '자격요건', '우대사항' 같은 제목과 그 아래 항목이 있어야 하나씩 확인할 수 있어요. 아래 '원문 고쳐서 다시 분석'에서 제목을 넣어 보세요.") }}</div>
+  {% endif %}
+</section>
+
 {# ── 공고 원문 ↔ 매칭 ── #}
 <section class="block reveal">
-  <div class="block-head"><div class="title"><span class="num">02</span><div><h2>공고 원문 ↔ 내 매칭</h2>
+  <div class="block-head"><div class="title"><span class="num">03</span><div><h2>공고 원문 ↔ 내 매칭</h2>
     <p>공고 원문의 <mark class="hl-exp">파란 단어</mark>는 내 경험과 겹치는 키워드, <mark class="hl-str">초록 단어</mark>는 내 강점이 드러나는 단서예요. 오른쪽에 근거 문장을 짝지어 보여 드려요.</p></div></div></div>
   <div class="match-layout">
     <article class="card posting-doc" id="doc">

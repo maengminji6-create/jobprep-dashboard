@@ -406,3 +406,25 @@ dialog.drawer::backdrop { background: rgba(43, 44, 48, .2); backdrop-filter: blu
 .deadline-field input { width: auto; padding: 7px 12px; font-size: .82rem; }
 .dup-box { margin: 0 0 16px; padding: 12px 16px; border-radius: 16px; background: var(--tone-50); font-size: .84rem; }
 .dup-box p { margin: 0 0 6px; }
+
+/* ── 필수·우대 요건 확인: 충족(세이지) · 확인 필요(슬레이트) · 근거 없음(회색) ─────────── */
+.req-grid { align-items: start; margin-bottom: 18px; }
+.req-count { font-size: .76rem; color: var(--muted); }
+.req-count b { color: var(--ok); }
+.req-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.req { padding: 12px 14px; border-radius: 16px; background: var(--bg); box-shadow: var(--inset-sm); border-left: 4px solid #c9ccd2; }
+.req-met { border-left-color: var(--sage); }
+.req-check { border-left-color: var(--tone-300); }
+.req-top { display: flex; gap: 8px; align-items: baseline; }
+.req-top b { font-size: .88rem; font-weight: 600; color: var(--ink); line-height: 1.5; }
+.req-badge { flex-shrink: 0; font-size: .68rem; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: #e4e6ea; color: #55575d; }
+.req-met .req-badge { background: #dde9d7; color: #3f6334; }
+.req-check .req-badge { background: var(--tone-100); color: var(--tone-700); }
+.req-why { margin: 6px 0 0; font-size: .8rem; color: var(--muted); }
+.req-ev { margin: 6px 0 0; font-size: .82rem; line-height: 1.6; }
+.req-ev q { quotes: "“" "”"; color: var(--text); }
+.req-tip { margin: 6px 0 0; font-size: .8rem; color: var(--tone-700); }
+.req-tip::before { content: "보완 · "; font-weight: 700; }
+.req-support ol { margin: 0; padding-left: 20px; display: grid; gap: 10px; font-size: .88rem; }
+.req-support .chips { margin-top: 6px; }
+.posting-stats b small { font-size: .9rem; color: var(--muted); }
