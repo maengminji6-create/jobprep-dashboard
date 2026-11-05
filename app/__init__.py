@@ -83,7 +83,7 @@ def create_app(config_name: str | None = None) -> Flask:
 
     @app.template_filter("highlight")
     def highlight(text, exp_words=None, str_words=None):
-        """형광펜: 내 경험과 겹치는 단어는 노랑(hl-exp), 내 강점 단서는 초록(hl-str), 둘 다면 hl-both.
+        """형광펜: 내 경험과 겹치는 단어는 파랑(hl-exp), 내 강점 단서는 초록(hl-str), 둘 다면 hl-both.
         먼저 HTML 이스케이프하므로 공고·경험 글에 태그가 있어도 안전합니다."""
         import re
 

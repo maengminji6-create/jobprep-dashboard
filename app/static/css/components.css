@@ -253,11 +253,15 @@ table.pcompare .is-best { background: rgba(242, 223, 185, .35); }
 .app-pick input { width: 18px; height: 18px; accent-color: var(--tone-600); cursor: pointer; }
 .app-meta { display: flex; flex-wrap: wrap; gap: 12px; font-size: .8rem; color: var(--muted); margin: 10px 0 6px; }
 .app-meta b { color: var(--tone-700); }
+/* 지원 상태 8단계: 관심·예정(회색) → 준비(연슬레이트) → 지원(슬레이트) → 합격 단계(세이지) → 최종(진한 슬레이트) · 불합격(로즈) */
+.badge.st-0 { background: #e4e6ea; color: #55575d; }
 .badge.st-1 { background: #e2e8ee; color: #354b63; }
-.badge.st-2 { background: #e9f1e1; color: #4d7340; }
-.badge.st-3 { background: #e4eef0; color: #3f6670; }
-.badge.st-4 { background: var(--tone-600); color: #fff; }
-.badge.st-5 { background: #efe0dd; color: #8e4f45; }
+.badge.st-2 { background: #dce4ec; color: #354b63; }
+.badge.st-3 { background: #c9d6e3; color: #2d425a; }
+.badge.st-4 { background: #dde9d7; color: #4d7340; }
+.badge.st-5 { background: #cfe1c8; color: #3f6334; }
+.badge.st-6 { background: var(--tone-600); color: #fff; }
+.badge.st-7 { background: #efe0dd; color: #8e4f45; }
 .qa-item { margin-bottom: 14px; }
 .qa-count { text-align: right; font-size: .8rem; color: var(--muted); margin: 6px 0 0; }
 .qa-count.over, .qa-len.over { color: var(--danger); font-weight: 700; }
@@ -364,3 +368,41 @@ dialog.drawer::backdrop { background: rgba(43, 44, 48, .2); backdrop-filter: blu
 .drawer-body .opening { margin-top: 14px; }
 @media (prefers-reduced-motion: reduce) { dialog.drawer[open] { animation: none; } }
 @media (max-width: 560px) { dialog.drawer { border-radius: 0; } }
+
+/* ── 공고 넣기: 입력 방식 탭(라디오 + CSS, JS 없이 동작) · 원문 확인 ─────────── */
+.mode-tabs { display: inline-flex; gap: 4px; padding: 6px; border-radius: 999px; background: var(--bg); box-shadow: var(--inset);
+  margin-bottom: 18px; flex-wrap: wrap; }
+.mode-tabs label { margin: 0; cursor: pointer; }
+.mode-tabs input { position: absolute; opacity: 0; pointer-events: none; }
+.mode-tabs span { display: block; padding: 8px 18px; border-radius: 999px; font-size: .86rem; color: var(--muted); }
+.mode-tabs input:checked + span { background: var(--bg); color: var(--ink); font-weight: 600; box-shadow: var(--raise-sm); }
+.mode-tabs input:focus-visible + span { outline: 2px solid var(--tone-300); outline-offset: 2px; }
+.mode-panel { display: none; }
+.posting-form:has(input[value="url"]:checked) .mode-panel[data-mode="url"],
+.posting-form:has(input[value="image"]:checked) .mode-panel[data-mode="image"],
+.posting-form:has(input[value="pdf"]:checked) .mode-panel[data-mode="pdf"],
+.posting-form:has(input[value="text"]:checked) .mode-panel[data-mode="text"] { display: block; }
+.hint { font-size: .8rem; margin: -4px 0 14px; }
+.inline-check { display: inline-flex; align-items: center; gap: 6px; margin: 0; font-size: .84rem; color: var(--text); }
+.review-sources { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; font-size: .8rem; }
+.review-text { min-height: 360px; font-size: .88rem; line-height: 1.75; }
+.check-box { margin: 0 0 16px; padding: 12px 16px; border-radius: 16px; background: #f6efe9; box-shadow: var(--inset-sm);
+  font-size: .84rem; color: #6b4b3e; }
+.check-box b { color: var(--warn); }
+.check-box summary { cursor: pointer; }
+.check-box ul { margin: 6px 0 0; padding-left: 18px; }
+.check-box li { margin-bottom: 3px; }
+
+/* ── 공고 관리: 지원 상태 · 마감 D-day · 같은 공고 알림 ───────────────────── */
+.dday { display: inline-block; font-size: .72rem; font-weight: 700; padding: 3px 9px; border-radius: 999px;
+  background: var(--bg); box-shadow: var(--inset-sm); color: var(--muted); white-space: nowrap; }
+.dday.week { color: var(--tone-700); background: var(--tone-50); box-shadow: none; }
+.dday.soon { color: #fff; background: var(--warn); box-shadow: none; }
+.dday.over { color: var(--muted); text-decoration: line-through; }
+.card-status { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 10px; min-height: 22px; }
+.status-form { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin-top: 14px; }
+.status-form .status-steps button { font-size: .78rem; padding: 6px 11px; }
+.deadline-field { display: inline-flex; align-items: center; gap: 8px; margin: 0; font-size: .8rem; color: var(--muted); }
+.deadline-field input { width: auto; padding: 7px 12px; font-size: .82rem; }
+.dup-box { margin: 0 0 16px; padding: 12px 16px; border-radius: 16px; background: var(--tone-50); font-size: .84rem; }
+.dup-box p { margin: 0 0 6px; }

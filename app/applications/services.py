@@ -32,3 +32,32 @@ def used_experiences(text: str, exps: list) -> list:
     """답변 글에 이름(기관·활동명)이 나오는 내 경험."""
     low = (text or "").lower()
     return [e for e in exps if any(t.lower() in low for t in _tokens(e))]
+
+
+# ── 지원 상태 연동: 공고(공고 매칭) ↔ 지원 기록(자소서 보관함) ─────────────────
+
+def sync_from_application(rec) -> None:
+    """지원 기록 상태를 바꾸면 연결된 공고도 같은 상태로(공고는 ★ 저장한 공고로 올라감)."""
+    from ..core.scoping import owned
+    from ..experiences.models import PostingAnalysis
+    if not rec.posting_id:
+        return
+    pa = owned(PostingAnalysis).filter(PostingAnalysis.id == rec.posting_id).first()
+    if pa:
+        pa.status = rec.status
+        _mark_saved(pa)
+
+
+def sync_from_posting(pa) -> None:
+    """공고 상태를 바꾸면 그 공고로 만든 지원 기록도 같은 상태로."""
+    from ..core.scoping import owned
+    from .models import ApplicationRecord
+    for rec in owned(ApplicationRecord).filter(ApplicationRecord.posting_id == pa.id).all():
+        rec.status = pa.status
+
+
+def _mark_saved(pa) -> None:
+    from datetime import datetime, timezone
+    if not pa.is_saved:
+        pa.is_saved = True
+        pa.saved_at = datetime.now(timezone.utc)

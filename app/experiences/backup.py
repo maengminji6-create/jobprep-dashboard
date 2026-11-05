@@ -7,6 +7,7 @@
 import json
 from datetime import datetime
 
+from ..core.job_status import normalize
 from ..core.scoping import create_owned, owned
 from ..extensions import db
 from .models import CATEGORIES, Certificate, Experience, Snapshot
@@ -96,7 +97,9 @@ def restore(data: dict, experiences: bool = True, strength: bool = True, applica
             db.session.delete(a)
         db.session.flush()
         for item in data["applications"]:
-            create_owned(ApplicationRecord, **{f: item.get(f, "") for f in APP_FIELDS})
+            fields = {f: item.get(f, "") for f in APP_FIELDS}
+            fields["status"] = normalize(fields["status"], "서류 준비 중")
+            create_owned(ApplicationRecord, **fields)
             result["applications"] += 1
     sp = data.get("strength_profile")
     if strength and sp:

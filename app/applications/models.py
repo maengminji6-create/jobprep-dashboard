@@ -1,9 +1,8 @@
 import json
 
+from ..core.job_status import STATUSES  # noqa: F401 (예전 import 경로 유지)
 from ..core.models_base import TimestampMixin, UserOwnedMixin
 from ..extensions import db
-
-STATUSES = ["작성 중", "제출 완료", "서류 합격", "면접 진행", "최종 합격", "불합격"]
 
 
 class ApplicationRecord(UserOwnedMixin, TimestampMixin, db.Model):
@@ -13,7 +12,7 @@ class ApplicationRecord(UserOwnedMixin, TimestampMixin, db.Model):
     company = db.Column(db.String(120), nullable=False)
     position = db.Column(db.String(200), default="")
     role_code = db.Column(db.String(40), default="")
-    status = db.Column(db.String(20), default="작성 중")
+    status = db.Column(db.String(20), default="서류 준비 중")
     applied_at = db.Column(db.String(40), default="")   # 제출일(예: 2026.10.17)
     deadline = db.Column(db.String(40), default="")
     url = db.Column(db.Text, default="")

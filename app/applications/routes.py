@@ -1,6 +1,7 @@
 from flask import flash, redirect, render_template, request, url_for
 from flask_login import login_required
 
+from ..core.job_status import normalize
 from ..core.scoping import create_owned, get_owned_or_404, owned
 from ..core.trade_roles import ROLE_BY_CODE
 from ..experiences.analyzer import role_options
@@ -8,7 +9,7 @@ from ..experiences.models import Experience, PostingAnalysis
 from ..extensions import db
 from . import bp
 from .models import STATUSES, ApplicationRecord
-from .services import dump_qa, read_qa, used_experiences
+from .services import dump_qa, read_qa, sync_from_application, used_experiences
 
 FIELDS = ("company", "position", "role_code", "status", "applied_at", "deadline", "url",
           "company_info", "talent", "notes")
@@ -20,8 +21,7 @@ def _form_fields() -> dict:
     for f in FIELDS:
         v = (request.form.get(f) or "").strip()
         out[f] = v[:LIMITS[f]] if f in LIMITS else v
-    if out["status"] not in STATUSES:
-        out["status"] = STATUSES[0]
+    out["status"] = normalize(out["status"], "서류 준비 중")
     if out["role_code"] not in ROLE_BY_CODE:
         out["role_code"] = ""
     return out
@@ -61,6 +61,7 @@ def new():
         posting = _posting_or_none(request.form.get("posting_id", type=int))
         rec = create_owned(ApplicationRecord, posting_id=posting.id if posting else None, qa_json=dump_qa(read_qa(request.form)),
                            **fields)
+        sync_from_application(rec)
         db.session.commit()
         flash(f"'{rec.company}' 지원 기록을 저장했어요.", "success")
         return redirect(url_for("applications.detail", rec_id=rec.id))
@@ -69,7 +70,9 @@ def new():
     prefill = {}
     if posting:
         prefill = {"company": posting.company or "", "position": posting.title or "", "url": posting.url or "",
-                   "role_code": posting.result.get("main_role", ""), "posting_id": posting.id}
+                   "role_code": posting.result.get("main_role", ""), "posting_id": posting.id,
+                   "status": posting.status or "서류 준비 중",
+                   "deadline": posting.deadline.strftime("%Y.%m.%d") if posting.deadline else ""}
     return render_template("applications/form.html", rec=None, form=prefill, qa=[], **_form_context())
 
 
@@ -89,7 +92,7 @@ def detail(rec_id):
     if posting and posting.user_id != rec.user_id:
         posting = None
     return render_template("applications/detail.html", rec=rec, used=used, all_used=list(all_used.values()),
-                           posting=posting, role_map=ROLE_BY_CODE)
+                           posting=posting, role_map=ROLE_BY_CODE, statuses=STATUSES)
 
 
 @bp.route("/<int:rec_id>/edit", methods=["GET", "POST"])
@@ -106,6 +109,7 @@ def edit(rec_id):
         posting = _posting_or_none(request.form.get("posting_id", type=int))
         rec.posting_id = posting.id if posting else None
         rec.qa_json = dump_qa(read_qa(request.form))
+        sync_from_application(rec)
         db.session.commit()
         flash("저장했어요.", "success")
         return redirect(url_for("applications.detail", rec_id=rec.id))
@@ -121,6 +125,7 @@ def set_status(rec_id):
     status = request.form.get("status")
     if status in STATUSES:
         rec.status = status
+        sync_from_application(rec)
         db.session.commit()
     return redirect(request.referrer if (request.referrer or "").startswith(request.host_url)
                     else url_for("applications.detail", rec_id=rec.id))

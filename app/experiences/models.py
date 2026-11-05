@@ -75,6 +75,19 @@ class PostingAnalysis(UserOwnedMixin, TimestampMixin, db.Model):
     role_code = db.Column(db.String(40), default="")     # 직무 분류(기본은 분석이 찾은 직무)
     images_json = db.Column(db.Text, default="[]")       # 공고 페이지의 본문 이미지 주소
     vision_json = db.Column(db.Text, default="")         # AI가 이미지에서 읽은 공고 구조(모집부문·직무·자격·우대)
+    status = db.Column(db.String(20), default="")        # core/job_status.STATUSES (저장 전 조회 기록은 빈 값)
+    deadline = db.Column(db.Date)                        # 마감일
+    text_hash = db.Column(db.String(64), default="", index=True)  # 같은 공고 중복 확인용 원문 지문
+
+    @property
+    def d_day(self):
+        from ..core.job_status import d_day
+        return d_day(self.deadline)
+
+    @property
+    def urgency(self) -> str:
+        from ..core.job_status import urgency
+        return urgency(self.deadline, self.status)
 
     @property
     def images(self) -> list[str]:

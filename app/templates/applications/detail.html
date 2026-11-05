@@ -16,7 +16,7 @@
   <div class="app-summary">
     <form method="post" action="{{ url_for('applications.set_status', rec_id=rec.id) }}" class="status-steps">
       {{ csrf() }}
-      {% for s in ['작성 중', '제출 완료', '서류 합격', '면접 진행', '최종 합격', '불합격'] %}
+      {% for s in statuses %}
       <button type="submit" name="status" value="{{ s }}" class="{{ 'on' if s == rec.status }}">{{ s }}</button>
       {% endfor %}
     </form>

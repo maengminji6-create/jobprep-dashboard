@@ -510,84 +510,147 @@ def _postings() -> dict:
                                   PostingAnalysis.memo.ilike(like)))
     saved_all = base.filter(PostingAnalysis.is_saved.is_(True)).order_by(PostingAnalysis.saved_at.desc(),
                                                                         PostingAnalysis.created_at.desc()).all()
-    saved = [p for p in saved_all if (not ind or p.industry == ind) and (not role or p.role_code == role)]
+    st = request.args.get("st", "")
+    saved = [p for p in saved_all if (not ind or p.industry == ind) and (not role or p.role_code == role)
+             and (not st or p.status == st)]
     history = base.filter(PostingAnalysis.is_saved.is_(False)).order_by(PostingAnalysis.created_at.desc()).all()
     ind_counts = {c: sum(1 for p in saved_all if p.industry == c) for c, _n, _w in INDUSTRIES}
     role_counts = {}
     for p in saved_all:
         if p.role_code in ROLE_BY_CODE:
             role_counts[p.role_code] = role_counts.get(p.role_code, 0) + 1
+    from ..core.job_status import STATUSES
+    st_counts = {s: sum(1 for p in saved_all if p.status == s) for s in STATUSES}
     return {"saved": saved, "saved_total": len(saved_all), "history": history, "q": q, "ind": ind, "prole": role,
+            "st": st, "statuses": STATUSES, "st_counts": st_counts,
             "industries": [(c, n) for c, n, _w in INDUSTRIES if ind_counts[c]], "ind_counts": ind_counts,
             "role_facets": sorted(((c, ROLE_BY_CODE[c]["name"], n) for c, n in role_counts.items()), key=lambda x: -x[2]),
             "role_map": ROLE_BY_CODE, "all_industries": [(c, n) for c, n, _w in INDUSTRIES], "all_roles": role_options()}
 
 
+POSTING_MODES = ("url", "image", "pdf", "text")
+MAX_PDF_BYTES = 10 * 1024 * 1024
+
+
+def _json_field(name: str, kind):
+    """확인 화면이 넘겨준 숨은 칸(JSON). 형식이 다르면 빈 값."""
+    try:
+        v = json.loads(request.form.get(name) or "null")
+    except ValueError:
+        return kind()
+    return v if isinstance(v, kind) else kind()
+
+
 @bp.route("/posting", methods=["GET", "POST"])
 @login_required
 def posting():
+    """공고 넣기 → (링크·이미지·PDF면) 원문 확인 → 분석·저장. 텍스트를 직접 넣으면 바로 분석."""
     ctx = _postings()
     if request.method == "GET":
         return render_template("experiences/posting.html", analysis=None, **ctx)
-
-    from .posting_images import UPLOAD_EXT, download_image, is_posting_sized, to_chunks, vision_to_text
-    url = (request.form.get("url") or "").strip()
-    pasted = (request.form.get("posting_text") or "").strip()
-    company = (request.form.get("company") or "").strip()[:120]
-    title, text, image_urls, blobs = "", clean_posting_text(pasted) if pasted else "", [], []
-
-    # ① 직접 올린 공고 이미지(캡처)
-    for f in request.files.getlist("images")[:6]:
-        ext = f.filename.rsplit(".", 1)[-1].lower() if f and "." in (f.filename or "") else ""
-        if ext in UPLOAD_EXT:
-            data = f.read(8 * 1024 * 1024 + 1)
-            if len(data) <= 8 * 1024 * 1024:
-                blobs.append(data)
-    # ② 링크: 본문 글 + 본문 이미지
-    if url and not pasted:
-        try:
-            page = fetch_posting_full(url)
-        except PostingFetchError as exc:
-            if not blobs:
-                flash(str(exc), "error")
-                return render_template("experiences/posting.html", analysis=None, form=request.form, **ctx)
-            page = {"title": "", "text": "", "images": []}
-        title, text = page["title"], page["text"]
-        for img_url in page["images"]:
-            if len(image_urls) >= 6:
-                break
-            data = download_image(img_url)
-            if data and is_posting_sized(data):
-                image_urls.append(img_url)
-                blobs.append(data)
-
-    # ③ 이미지 속 공고 읽기(AI). 실패해도 글로 읽은 내용으로 계속 진행
-    vision = {}
-    if blobs:
-        if ai_client.enabled():
-            try:
-                vision = ai_client.read_posting_images(to_chunks(blobs))
-                text = (text + "\n" + vision_to_text(vision)).strip()
-            except ai_client.AiError as exc:
-                flash(f"이미지 속 공고 내용은 읽지 못했어요: {exc}", "info")
-        else:
-            flash("이 공고는 중요한 내용이 이미지에 들어 있어요. 이미지까지 읽으려면 .env 에 OPENAI_API_KEY 를 넣어 주세요. "
-                  "지금은 글로 된 부분만 분석했어요.", "info")
-    if len(text) < 80:
-        flash("공고 내용을 충분히 읽지 못했어요(로그인·앱 전용 페이지일 수 있음). 공고 본문을 붙여 넣거나 공고 캡처 이미지를 올려 주세요.",
-              "error")
-        return render_template("experiences/posting.html", analysis=None, form=request.form, **ctx)
-
     if not owned(Experience).count():
         flash("먼저 경험 분석 화면에서 경험을 올리거나 추가해 주세요.", "error")
         return redirect(url_for("experiences.index"))
-    result = _analyze_text(text)
+
+    company = (request.form.get("company") or "").strip()[:120]
+    pasted = (request.form.get("posting_text") or "").strip()
+    if request.form.get("reviewed") == "1":  # 원문 확인 화면에서 넘어옴: 사용자가 확인·수정한 글 그대로
+        warnings = [w[:300] for w in _json_field("warnings", list) if isinstance(w, str)][:10]
+        vision = _json_field("vision_json", dict)
+        urls = [u for u in _json_field("image_urls", list) if isinstance(u, str) and u.startswith("http")][:6]
+        return _save_analysis(pasted, (request.form.get("url") or "").strip(), company,
+                              (request.form.get("title") or "").strip(), urls, vision, warnings)
+
+    mode = request.form.get("mode") or ("text" if pasted and not request.form.get("url") else "url")
+    if mode not in POSTING_MODES:
+        mode = "url"
+    if mode == "text":
+        if len(pasted) < 80:
+            flash("공고 본문을 조금 더 넣어 주세요(담당 업무·자격요건·우대사항이 들어가면 정확해요).", "error")
+            return render_template("experiences/posting.html", analysis=None, form=request.form, mode=mode, **ctx)
+        text = clean_posting_text(pasted)
+        from .posting_extract import check_text
+        return _save_analysis(text, "", company, "", [], {}, check_text(text))
+
+    from .posting_extract import extract
+    from .posting_images import UPLOAD_EXT
+    url, images, pdf = "", [], None
+    if mode == "url":
+        url = (request.form.get("url") or "").strip()
+        if not url:
+            flash("채용공고 링크를 넣어 주세요.", "error")
+            return render_template("experiences/posting.html", analysis=None, form=request.form, mode=mode, **ctx)
+    elif mode == "image":
+        for f in request.files.getlist("images")[:6]:  # 올린 순서 그대로
+            ext = f.filename.rsplit(".", 1)[-1].lower() if f and "." in (f.filename or "") else ""
+            if ext not in UPLOAD_EXT:
+                continue
+            data = f.read(8 * 1024 * 1024 + 1)
+            if len(data) > 8 * 1024 * 1024:
+                flash(f"'{f.filename}'은(는) 8MB가 넘어 빼고 읽었어요.", "info")
+                continue
+            images.append(data)
+        if not images:
+            flash("JPG·PNG 공고 이미지를 골라 주세요(최대 6장, 장당 8MB).", "error")
+            return render_template("experiences/posting.html", analysis=None, form=request.form, mode=mode, **ctx)
+    else:
+        f = request.files.get("pdf")
+        if not f or not (f.filename or "").lower().endswith(".pdf"):
+            flash("PDF 파일을 골라 주세요.", "error")
+            return render_template("experiences/posting.html", analysis=None, form=request.form, mode=mode, **ctx)
+        pdf = f.read(MAX_PDF_BYTES + 1)
+        if len(pdf) > MAX_PDF_BYTES:
+            flash("PDF는 10MB까지 올릴 수 있어요.", "error")
+            return render_template("experiences/posting.html", analysis=None, form=request.form, mode=mode, **ctx)
+
+    ex = extract(url=url, images=images, pdf=pdf)
+    if ex["error"]:
+        for w in ex["warnings"]:
+            if w.startswith(("링크를", "PDF", "암호", "이미지")):
+                flash(w, "info")
+        flash(ex["error"], "error")
+        return render_template("experiences/posting.html", analysis=None, form=request.form, mode=mode, **ctx)
+    from .posting_extract import find_duplicate, guess_deadline
+    ex["company"] = company or ex["company"]
+    ex["deadline"] = guess_deadline(ex["text"] + "\n" + (ex["vision"].get("period") or ""))
+    ex["duplicate"] = find_duplicate(ex["url"], ex["text"])
+    return render_template("experiences/posting.html", analysis=None, review=ex, mode=mode, **ctx)
+
+
+def _parse_date(value: str):
+    """'2026-11-03' · '2026.11.03' → date. 비었거나 틀리면 None."""
+    import re
+    from datetime import date
+    m = re.match(r"^\s*(20\d{2})\s*[.\-/]\s*(\d{1,2})\s*[.\-/]\s*(\d{1,2})", value or "")
+    try:
+        return date(int(m.group(1)), int(m.group(2)), int(m.group(3))) if m else None
+    except ValueError:
+        return None
+
+
+def _save_analysis(text, url, company, title, image_urls, vision, warnings):
+    """확인한 원문으로 매칭 분석 → 저장 → 상세 화면. 같은 공고가 이미 있으면 그 공고로 안내."""
+    from datetime import datetime, timezone
+
     from ..core.industries import detect_industry
+    from .posting_extract import find_duplicate, text_hash
+    if len(text) < 80:
+        flash("분석할 공고 원문이 너무 짧아요. 담당 업무·자격요건·우대사항을 넣어 주세요.", "error")
+        return redirect(url_for("experiences.posting"))
+    dup = find_duplicate(url, text)
+    if dup and not request.form.get("allow_dup"):
+        flash("이미 넣은 공고예요. 저장해 둔 분석을 열었어요. 지금 이력으로 다시 보려면 '↻ 지금 이력으로 다시 매칭'을 누르세요.", "info")
+        return redirect(url_for("experiences.posting_detail", pa_id=dup.id))
+    result = _analyze_text(text)
+    result["extract_warnings"] = warnings
     company = company or (vision.get("company") or "")[:120]
     title = title or vision.get("title") or company or "붙여넣은 공고"
+    saved = bool(request.form.get("save_now"))
     pa = create_owned(PostingAnalysis, url=url, company=company, title=title[:300],
                       industry=detect_industry(f"{company} {title} {text}"), role_code=result.get("main_role", ""),
-                      is_saved=bool(request.form.get("save_now")), images_json=json.dumps(image_urls),
+                      is_saved=saved, saved_at=datetime.now(timezone.utc) if saved else None,
+                      status="관심 공고" if saved else "", deadline=_parse_date(request.form.get("deadline")),
+                      text_hash=text_hash(text[:30000]), images_json=json.dumps(image_urls),
                       vision_json=json.dumps(vision, ensure_ascii=False) if vision else "",
                       posting_text=text[:30000], result_json=json.dumps(result, ensure_ascii=False))
     db.session.commit()
@@ -665,7 +728,7 @@ def posting_detail(pa_id):
     exps, certs, profile, _linked = _match_inputs()
     stale_ai = bool(pa.ai_json) and pa.ai_hash != _data_hash(exps, certs, profile)
     r = pa.result
-    # 형광펜: 노랑 = 내 경험과 겹치는 공고 단어, 초록 = 내 강점이 드러나는 단서 단어
+    # 형광펜: 파랑 = 내 경험과 겹치는 공고 단어, 초록 = 내 강점이 드러나는 단서 단어
     exp_words = sorted({w for rec in r.get("recommendations", [])
                         for w in rec.get("hit_required", []) + rec.get("hit_preferred", [])})
     str_words = sorted({w for s in r.get("strength_matches", []) for w in s.get("words", [])})
@@ -688,6 +751,27 @@ def posting_reanalyze(pa_id):
     pa.result_json = json.dumps(_analyze_text(pa.posting_text), ensure_ascii=False)
     db.session.commit()
     flash("지금 내 이력으로 다시 매칭했어요.", "success")
+    return redirect(url_for("experiences.posting_detail", pa_id=pa.id))
+
+
+@bp.route("/posting/<int:pa_id>/text", methods=["POST"])
+@login_required
+def posting_text_edit(pa_id):
+    """공고 원문을 고쳐서 다시 분석(읽기 오류 바로잡기)."""
+    from .posting_extract import check_text
+    pa = get_owned_or_404(PostingAnalysis, pa_id)
+    text = (request.form.get("posting_text") or "").strip()
+    if len(text) < 80:
+        flash("공고 원문이 너무 짧아요. 담당 업무·자격요건·우대사항이 들어가야 정확하게 분석돼요.", "error")
+        return redirect(url_for("experiences.posting_detail", pa_id=pa.id, _anchor="doc"))
+    from .posting_extract import text_hash
+    pa.posting_text = text[:30000]
+    pa.text_hash = text_hash(pa.posting_text)
+    result = _analyze_text(pa.posting_text)
+    result["extract_warnings"] = check_text(pa.posting_text)
+    pa.result_json = json.dumps(result, ensure_ascii=False)
+    db.session.commit()
+    flash("고친 원문으로 다시 분석했어요.", "success")
     return redirect(url_for("experiences.posting_detail", pa_id=pa.id))
 
 
@@ -716,12 +800,35 @@ def posting_save(pa_id):
     pa = get_owned_or_404(PostingAnalysis, pa_id)
     pa.is_saved = not pa.is_saved
     pa.saved_at = datetime.now(timezone.utc) if pa.is_saved else None
+    pa.status = (pa.status or "관심 공고") if pa.is_saved else ""
     db.session.commit()
     flash("공고를 저장했어요. '저장한 공고'에서 산업·직무별로 모아 볼 수 있어요." if pa.is_saved
           else "저장을 취소했어요. 최근 조회 기록으로 옮겼어요.", "success" if pa.is_saved else "info")
     nxt = request.form.get("next", "")
     return redirect(nxt if nxt.startswith("/") and not nxt.startswith("//")
                     else url_for("experiences.posting_detail", pa_id=pa.id))
+
+
+@bp.route("/posting/<int:pa_id>/status", methods=["POST"])
+@login_required
+def posting_status(pa_id):
+    """지원 상태 · 마감일. 상태를 정하면 ★ 저장한 공고로 올라가고, 이 공고로 만든 지원 기록도 같은 상태로."""
+    from datetime import datetime, timezone
+
+    from ..applications.services import sync_from_posting
+    from ..core.job_status import STATUSES
+    pa = get_owned_or_404(PostingAnalysis, pa_id)
+    status = request.form.get("status")
+    if status in STATUSES:
+        pa.status = status
+        if not pa.is_saved:
+            pa.is_saved, pa.saved_at = True, datetime.now(timezone.utc)
+        sync_from_posting(pa)
+    if "deadline" in request.form:
+        pa.deadline = _parse_date(request.form.get("deadline"))
+    db.session.commit()
+    flash("지원 상태를 저장했어요.", "success")
+    return redirect(url_for("experiences.posting_detail", pa_id=pa.id))
 
 
 @bp.route("/posting/history/clear", methods=["POST"])
