@@ -152,7 +152,7 @@
     {% if ai_enabled %}
     <form method="post" action="{{ url_for('strengths.ai_link') }}" data-ai-form>{{ csrf() }}<input type="hidden" name="role" value="{{ role }}">
       <button class="btn sm" type="submit">✦ {{ '다시 분석하기' if ai else 'AI로 강점-경험 연결하기' }}</button></form>
-    {% else %}<small class="muted">.env 에 OPENAI_API_KEY 를 넣으면 쓸 수 있어요</small>{% endif %}
+    {% else %}<small class="muted">{{ ai_unavailable() }}</small>{% endif %}
   </div>
   {% if ai %}
   <div class="card ai-story">

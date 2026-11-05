@@ -113,6 +113,9 @@ def create_app(config_name: str | None = None) -> Flask:
             return f'<mark class="{cls}" title="{title}">{m.group(0)}</mark>'
         return Markup(pattern.sub(mark, safe))
 
+    from .core import ai_quota
+    app.jinja_env.globals.update(ai_unavailable=ai_quota.unavailable_message, ai_available=ai_quota.available)
+
     @app.context_processor
     def inject_nav():
         from flask import request

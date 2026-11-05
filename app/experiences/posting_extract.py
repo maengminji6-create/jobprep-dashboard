@@ -10,6 +10,9 @@ import re
 from datetime import date, timedelta
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
+from flask import current_app
+
+from ..core import ai_quota
 from ..integrations import ai_client
 from . import posting_images as pim
 from .posting import PostingFetchError, clean_posting_text, fetch_posting_full
@@ -71,9 +74,10 @@ def extract(url: str = "", pasted: str = "", images: list[bytes] | None = None, 
             out["warnings"].append(str(exc))
 
     if blobs:
-        if not ai_client.enabled():
-            out["warnings"].append("이미지(캡처 · 링크 속 이미지 · 스캔 PDF)의 글자는 읽지 못했어요. 읽으려면 .env 에 "
-                                   "OPENAI_API_KEY 가 필요해요. 지금은 글로 된 부분만 담았어요.")
+        if not ai_quota.available(current_app.config["AI_VISION_COST"]):
+            out["warnings"].append("이미지(캡처 · 링크 속 이미지 · 스캔 PDF)의 글자는 읽지 못했어요. "
+                                   + ai_client.unavailable_message(current_app.config["AI_VISION_COST"])
+                                   + " 지금은 글로 된 부분만 담았어요.")
         else:
             try:
                 vision = ai_client.read_posting_images(to_chunks(blobs))

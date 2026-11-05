@@ -14,3 +14,4 @@ openai>=3.31
 Pillow>=11.0
 gunicorn>=22.0
 psycopg[binary]>=3.1
+cryptography>=43
