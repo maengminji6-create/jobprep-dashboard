@@ -100,7 +100,15 @@ def experience_usage(exp) -> dict:
         for item in rec.qa:
             if exp in used_experiences(item.get("a", ""), [exp], item.get("exps")):
                 essays.append({"id": rec.id, "company": rec.company, "question": item.get("q") or "문항"})
-    return {"postings": postings, "essays": essays, "total": len(postings) + len(essays)}
+    from ..interview.models import InterviewQuestion, InterviewSession
+    interviews = []
+    for q in owned(InterviewQuestion).order_by(InterviewQuestion.created_at.desc()).all():
+        if exp.id in q.exp_id_list and (q.answer or "").strip():
+            s = owned(InterviewSession).filter(InterviewSession.id == q.session_id).first()
+            if s:
+                interviews.append({"id": s.id, "title": s.title, "question": q.question})
+    return {"postings": postings, "essays": essays, "interviews": interviews,
+            "total": len(postings) + len(essays) + len(interviews)}
 
 
 def check_ai_competencies(items: list[dict], source: str) -> list[dict]:

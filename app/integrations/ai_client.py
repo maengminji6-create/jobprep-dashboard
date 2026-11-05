@@ -5,6 +5,7 @@
 - 여러 경험을 한 번의 요청으로 보내고, JSON 스키마(structured outputs)로 형식이 고정된 결과를 받습니다.
 """
 import json
+import re
 
 import openai
 from flask import current_app
@@ -436,4 +437,62 @@ def draft_answer(question: str, limit: str, exps: list, posting_text: str, role_
         "경험(이 내용만 근거로):", json.dumps(blocks, ensure_ascii=False, indent=1)])
     data = _call(ANSWER_PROMPT, prompt, ANSWER_SCHEMA, "essay_draft")
     data["missing"] = [m for m in data.get("missing", []) if m][:5]
+    return data
+
+
+# ── 면접 준비: 예상 질문 · 답변 피드백 ───────────────────────────────────
+
+INTERVIEW_Q_SCHEMA = {
+    "type": "object",
+    "properties": {"questions": {"type": "array", "items": {
+        "type": "object",
+        "properties": {"category": {"type": "string"}, "question": {"type": "string"}, "basis": {"type": "string"}},
+        "required": ["category", "question", "basis"], "additionalProperties": False}}},
+    "required": ["questions"], "additionalProperties": False,
+}
+
+INTERVIEW_Q_PROMPT = """당신은 무역·비즈니스 직무 면접관입니다. 채용공고와 지원자의 경험을 보고 실제로 나올 법한 예상 질문을 만듭니다.
+
+원칙:
+- category 는 '직무 역량', '경험', '문제 해결', '지원 동기' 중 하나입니다.
+- basis 에는 그 질문을 만든 근거를 공고 문장이나 지원자 경험 글에서 '그대로' 인용합니다(요약·창작 금지). 인용할 근거가 없으면 그 질문은 만들지 않습니다.
+- 지원자 경험에 없는 사실을 있다고 가정한 질문(예: 하지 않은 업무)을 만들지 않습니다.
+- 꼬리 질문이 나올 만한 구체적인 질문 6~8개, 한국어."""
+
+INTERVIEW_FB_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "good": {"type": "array", "items": {"type": "object", "properties": {"quote": {"type": "string"}, "why": {"type": "string"}},
+                                            "required": ["quote", "why"], "additionalProperties": False}},
+        "improve": {"type": "array", "items": {"type": "object", "properties": {"quote": {"type": "string"}, "how": {"type": "string"}},
+                                               "required": ["quote", "how"], "additionalProperties": False}},
+        "follow_up": {"type": "array", "items": {"type": "string"}},
+    },
+    "required": ["good", "improve", "follow_up"], "additionalProperties": False,
+}
+
+INTERVIEW_FB_PROMPT = """당신은 면접 코치입니다. 지원자의 답변만 보고 피드백합니다.
+
+원칙:
+- good·improve 의 quote 는 지원자 답변에 실제로 있는 구절을 그대로 인용합니다. 답변에 없는 말을 인용하지 않습니다.
+- improve 의 how 는 '이렇게 바꿔 말해 보세요' 수준으로 구체적으로. 경험에 없는 성과·숫자를 넣으라고 권하지 않습니다
+  (결과가 없으면 '실제로 있었던 결과가 있다면 덧붙이라'고만 합니다).
+- follow_up: 이 답변을 들은 면접관이 할 꼬리 질문 2~3개.
+- 각 항목 1~3개, 한국어."""
+
+
+def interview_questions(posting_text: str, exps: list, company: str, role_name: str) -> list[dict]:
+    blocks = [_experience_block(e, role_name, []) for e in exps[:8]]
+    prompt = PARA.join([f"회사: {company or '(미입력)'} · 직무: {role_name}", f"채용공고:\n{(posting_text or '')[:6000]}",
+                        "지원자 경험:", json.dumps(blocks, ensure_ascii=False, indent=1)])
+    return _call(INTERVIEW_Q_PROMPT, prompt, INTERVIEW_Q_SCHEMA, "interview_questions").get("questions", [])
+
+
+def interview_feedback(question: str, answer: str) -> dict:
+    data = _call(INTERVIEW_FB_PROMPT, PARA.join([f"질문: {question}", f"답변:\n{answer}"]), INTERVIEW_FB_SCHEMA, "interview_feedback")
+    norm = lambda s: re.sub(r"\s+", "", s or "")  # noqa: E731
+    src = norm(answer)
+    data["good"] = [g for g in data.get("good", []) if norm(g.get("quote")) and norm(g.get("quote")) in src][:3]
+    data["improve"] = [g for g in data.get("improve", []) if norm(g.get("quote")) and norm(g.get("quote")) in src][:3]
+    data["follow_up"] = [f for f in data.get("follow_up", []) if f][:3]
     return data

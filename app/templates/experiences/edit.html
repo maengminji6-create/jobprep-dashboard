@@ -92,6 +92,10 @@
           {% if p.status %}<span class="muted"> · {{ p.status }}</span>{% endif %}
           {% if p.met %}<small>요건 {{ p.met }}개 충족{% if p['items'] %} · {{ p['items']|join(', ')|truncate(50, True, '…') }}{% endif %}</small>{% endif %}</li>
       {% endfor %}</ul>{% endif %}
+      {% if usage.interviews %}<h4 class="side-h">면접 답변</h4>
+      <ul class="use-list">{% for i in usage.interviews %}
+        <li><a href="{{ url_for('interview.detail', sid=i.id) }}">{{ i.title }}</a><small>{{ i.question|truncate(50, True, '…') }}</small></li>
+      {% endfor %}</ul>{% endif %}
       {% if usage.essays %}<h4 class="side-h">답변에 쓴 자소서 문항</h4>
       <ul class="use-list">{% for e in usage.essays %}
         <li><a href="{{ url_for('applications.detail', rec_id=e.id) }}">{{ e.company }}</a><small>{{ e.question }}</small></li>

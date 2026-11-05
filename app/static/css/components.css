@@ -557,3 +557,24 @@ dialog.drawer::backdrop { background: rgba(43, 44, 48, .2); backdrop-filter: blu
   .cal-day { min-height: 56px; padding: 4px; }
   .cal-ev { font-size: 0; height: 6px; padding: 0; border-left-width: 0; border-radius: 3px; background: currentColor; }
 }
+
+/* ── 면접 준비실: 질문 카드 · 근거 · 답변 · 점검 ─────────────────────────── */
+.iv-list { display: grid; gap: 16px; }
+.iv-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.iv-head h3 { margin: 0; flex: 1 1 300px; font-size: 1rem; line-height: 1.55; }
+.iv-basis { font-size: .78rem; color: var(--muted); margin: 6px 0 10px; }
+.iv-exps { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 8px; }
+.iv-answer { min-height: 130px; }
+.iv-more { margin: 6px 0 10px; font-size: .84rem; }
+.iv-more summary { cursor: pointer; color: var(--muted); }
+.iv-btns { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.iv-fb { margin-top: 12px; padding: 12px 14px; border-radius: 16px; background: var(--bg); box-shadow: var(--inset-sm); font-size: .84rem; }
+.iv-check { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.iv-check li::before { content: "•"; color: var(--warn); font-weight: 700; margin-right: 8px; }
+.iv-check li.ok::before { content: "✓"; color: var(--ok); }
+.iv-ai { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+.iv-ai p { margin: 0 0 6px; }
+.iv-ai ul { margin: 0; padding-left: 18px; }
+.ok-t { color: var(--ok); margin-right: 4px; }
+.fix-t { color: var(--warn); margin-right: 4px; }
+.iv-del { text-align: right; margin-top: 6px; }

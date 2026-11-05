@@ -266,6 +266,7 @@
       <form method="post" action="{{ url_for('experiences.posting_reanalyze', pa_id=analysis.id) }}">{{ csrf() }}
         <button class="btn secondary sm" type="submit" title="지금의 이력·강점·자격증으로 다시 매칭">↻ 지금 이력으로 다시 매칭</button></form>
       <a class="btn sm" href="{{ url_for('applications.new', posting=analysis.id) }}">✎ 이 공고로 지원 기록 만들기</a>
+      <a class="btn secondary sm" href="{{ url_for('interview.index', posting=analysis.id) }}">◇ 이 공고로 면접 준비</a>
       <details class="box"><summary>산업·직무·메모 수정</summary>
         <form method="post" action="{{ url_for('experiences.posting_edit', pa_id=analysis.id) }}">{{ csrf() }}
           <div class="field"><label>산업</label><select name="industry">{% for c, n in all_industries %}<option value="{{ c }}" {{ 'selected' if c == analysis.industry }}>{{ n }}</option>{% endfor %}</select></div>

@@ -3,7 +3,7 @@
 {% block title %}취업 일정{% endblock %}
 
 {% macro dday(e) %}{% set left = e.d_day %}<span class="dday {{ e.urgency }}">{{ '지남' if left < 0 else ('오늘' if left == 0 else 'D-' ~ left) }}</span>{% endmacro %}
-{% macro ev_link(e) %}{% if e.source == 'posting' %}{{ url_for('experiences.posting_detail', pa_id=e.id) }}{% elif e.source == 'application' %}{{ url_for('applications.detail', rec_id=e.id) }}{% else %}#ev-{{ e.id }}{% endif %}{% endmacro %}
+{% macro ev_link(e) %}{% if e.source == 'posting' %}{{ url_for('experiences.posting_detail', pa_id=e.id) }}{% elif e.source == 'interview' %}{{ url_for('interview.detail', sid=e.id) }}{% elif e.source == 'application' %}{{ url_for('applications.detail', rec_id=e.id) }}{% else %}#ev-{{ e.id }}{% endif %}{% endmacro %}
 {% set KIND_CLASS = {'공고 마감': 'k-posting', '서류 마감': 'k-posting', '서류 제출': 'k-submit', '면접': 'k-interview',
                      '자격증 시험': 'k-exam', '개인 일정': 'k-personal', '기타': 'k-personal', '제출 완료': 'k-past'} %}
 
@@ -78,6 +78,8 @@
                   <button class="btn ghost sm" type="submit">＋ 준비 체크리스트 만들기</button></form>
                 <a class="btn ghost sm" href="{{ ev_link(e) }}">공고 보기 →</a>
               </div>
+            {% elif e.source == 'interview' %}
+              <div class="ev-actions"><a class="btn ghost sm" href="{{ ev_link(e) }}">면접 준비 보기 →</a></div>
             {% else %}
               <div class="ev-actions"><a class="btn ghost sm" href="{{ ev_link(e) }}">지원 기록 보기 →</a></div>
             {% endif %}

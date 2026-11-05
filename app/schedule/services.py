@@ -48,6 +48,19 @@ def collect_events(start: date, end: date, today: date | None = None) -> list[di
                         "title": f"{rec.company} {kind}", "memo": rec.position or "", "done": kind == "제출 완료" or rec.status in DONE,
                         "checklist": [], "checked": 0, "posting_id": rec.posting_id, "d_day": d_day(day, today),
                         "urgency": "" if kind == "제출 완료" else urgency(day, rec.status, today), "status": rec.status})
+    from ..interview.models import InterviewSession
+    for s in owned(InterviewSession).filter(InterviewSession.interview_date.isnot(None),
+                                            InterviewSession.interview_date >= start,
+                                            InterviewSession.interview_date <= end).all():
+        if any(ev.kind == "면접" and ev.date == s.interview_date and ev.posting_id and ev.posting_id == s.posting_id
+               for ev in stored):
+            continue  # 같은 공고로 직접 만든 면접 일정이 있으면 한 번만
+        left = d_day(s.interview_date, today)
+        out.append({"source": "interview", "id": s.id, "date": s.interview_date, "time": "", "kind": "면접",
+                    "title": s.title, "memo": f"예상 질문 {len(s.questions)}개 · 답변 {sum(1 for q in s.questions if q.answer.strip())}개",
+                    "done": bool(s.review), "checklist": [], "checked": 0, "posting_id": s.posting_id, "d_day": left,
+                    "urgency": "" if s.review else ("over" if left < 0 else ("soon" if left <= 3 else ("week" if left <= 7 else ""))),
+                    "status": ""})
     out.sort(key=lambda e: (e["date"], e["time"] or "99", e["kind"]))
     return out
 
