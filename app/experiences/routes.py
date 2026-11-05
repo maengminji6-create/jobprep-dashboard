@@ -323,6 +323,19 @@ def make_comments():
     return redirect(back)
 
 
+def _edit_page(exp, draft=None, draft_notes=None, ai_questions=None):
+    """경험 상세·수정 화면: STAR · 역량 추천(근거 문장) · 빈 칸 질문 · 관련 직무 · 활용 내역."""
+    from .analyzer import analyze
+    from .structuring import experience_usage, star_gaps, suggest_competencies
+    a = analyze(exp)
+    role_hint = [code for code, score in a["top_roles"] if score >= 30]
+    return render_template("experiences/edit.html", exp=exp, categories=EXP_CATEGORIES, roles=role_options(),
+                           role_map=ROLE_BY_CODE, role_hint=role_hint, suggestions=suggest_competencies(exp),
+                           gaps=star_gaps(exp), usage=experience_usage(exp), draft=draft or {},
+                           draft_notes=draft_notes or [], ai_questions=ai_questions or [],
+                           ai_enabled=ai_client.enabled())
+
+
 @bp.route("/<int:exp_id>/edit", methods=["GET", "POST"])
 @login_required
 def edit(exp_id):
@@ -333,10 +346,35 @@ def edit(exp_id):
         exp.category = fields["category"] or "기타"
         for k in ("organization", "period", *Experience.TEXT_FIELDS):
             setattr(exp, k, fields[k])
+        tags = [t.strip()[:40] for t in (request.form.get("competencies") or "").replace("#", ",").split(",") if t.strip()]
+        exp.competencies = ", ".join(dict.fromkeys(tags))[:2000]
+        exp.related_roles = ",".join(c for c in request.form.getlist("related_roles") if c in ROLE_BY_CODE)[:300]
         db.session.commit()
-        flash("수정했어요. 분석 결과도 함께 갱신됩니다.", "success")
-        return redirect(url_for("experiences.index"))
-    return render_template("experiences/edit.html", exp=exp, categories=EXP_CATEGORIES)
+        flash("저장했어요. 분석 결과도 함께 갱신돼요.", "success")
+        return redirect(url_for("experiences.edit", exp_id=exp.id))
+    return _edit_page(exp)
+
+
+@bp.route("/<int:exp_id>/structure", methods=["POST"])
+@login_required
+def structure(exp_id):
+    """AI가 내 글만으로 STAR 초안을 만듦 → 수정 화면에 채워 보여 줌(저장은 사용자가 확인한 뒤)."""
+    from .structuring import check_ai_competencies, check_draft
+    exp = get_owned_or_404(Experience, exp_id)
+    if not ai_client.enabled():
+        flash("AI로 STAR 초안을 만들려면 .env 에 OPENAI_API_KEY 가 필요해요. 아래 질문을 보고 직접 채워 주세요.", "info")
+        return redirect(url_for("experiences.edit", exp_id=exp.id))
+    role = session.get("exp_role") if session.get("exp_role") in ROLE_BY_CODE else "overseas_sales"
+    try:
+        data = ai_client.structure_experience(exp, ROLE_BY_CODE[role]["name"])
+    except ai_client.AiError as exc:
+        flash(str(exc), "error")
+        return redirect(url_for("experiences.edit", exp_id=exp.id))
+    source = exp.full_text
+    draft, notes = check_draft(data, source)
+    draft["competencies"] = check_ai_competencies(data.get("competencies", []), source)
+    flash("AI가 내 글로 STAR 초안을 채웠어요. 확인·수정한 뒤 '저장'을 눌러야 반영돼요.", "info")
+    return _edit_page(exp, draft=draft, draft_notes=notes, ai_questions=data.get("questions", []))
 
 
 @bp.route("/<int:exp_id>/delete", methods=["POST"])

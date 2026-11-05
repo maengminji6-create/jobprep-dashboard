@@ -113,6 +113,12 @@
         <div class="r-text">{{ rich(e[f]) }}</div>
       </div>
       {% endfor %}
+      {% if e.competency_list %}
+      <div class="r-field">
+        <h4>핵심 역량</h4>
+        <div class="r-tags">{% for k in e.competency_list %}<span>{{ k }}</span>{% endfor %}</div>
+      </div>
+      {% endif %}
       {% if e.keyword_list %}
       <div class="r-field">
         <h4>키워드</h4>

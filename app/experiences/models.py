@@ -28,21 +28,40 @@ class Experience(UserOwnedMixin, TimestampMixin, db.Model):
     strengths = db.Column(db.Text, default="")    # 강점·성과
     keywords = db.Column(db.Text, default="")     # 키워드(쉼표·# 구분)
     reflection = db.Column(db.Text, default="")   # 느낀점·배운 점
+    # STAR 구조화(선택): 자소서·면접 답변에 그대로 다시 쓰는 칸
+    star_situation = db.Column(db.Text, default="")  # 상황
+    star_task = db.Column(db.Text, default="")       # 과제
+    star_action = db.Column(db.Text, default="")     # 행동
+    star_result = db.Column(db.Text, default="")     # 결과
+    competencies = db.Column(db.Text, default="")    # 핵심 역량 태그(쉼표 구분)
+    related_roles = db.Column(db.String(300), default="")  # 관련 직무 코드(쉼표 구분, core/trade_roles)
     source = db.Column(db.String(20), default="manual")  # manual | upload
     upload_id = db.Column(db.Integer, db.ForeignKey("experience_upload.id", ondelete="SET NULL"))
     comments = db.relationship("ExperienceComment", cascade="all, delete-orphan")  # SQLite도 함께 삭제되도록 ORM이 지움
     exclusions = db.relationship("TopExclusion", cascade="all, delete-orphan")
 
-    TEXT_FIELDS = ("role", "content", "strengths", "keywords", "reflection")
+    BASE_FIELDS = ("role", "content", "strengths", "keywords", "reflection")
+    STAR_FIELDS = ("star_situation", "star_task", "star_action", "star_result")
+    TEXT_FIELDS = BASE_FIELDS + STAR_FIELDS  # 합치기·분석·백업·이력 PDF가 함께 다루는 글 칸
     TEXT_LABELS = {"role": "나의 역할", "content": "내용", "strengths": "강점·성과", "keywords": "키워드",
-                   "reflection": "느낀점"}
+                   "reflection": "느낀점", "star_situation": "상황 (S)", "star_task": "과제 (T)",
+                   "star_action": "행동 (A)", "star_result": "결과 (R)"}
 
     @property
     def full_text(self) -> str:
-        """분석에 쓰는 전체 텍스트(제목·기관·모든 항목)."""
+        """분석에 쓰는 전체 텍스트(제목·기관·모든 항목·역량 태그)."""
         parts = [self.title, self.organization or ""]
         parts += [getattr(self, f) or "" for f in self.TEXT_FIELDS]
+        parts.append(self.competencies or "")
         return "\n".join(p for p in parts if p)
+
+    @property
+    def competency_list(self) -> list[str]:
+        return [c.strip() for c in (self.competencies or "").split(",") if c.strip()]
+
+    @property
+    def related_role_list(self) -> list[str]:
+        return [c.strip() for c in (self.related_roles or "").split(",") if c.strip()]
 
     @property
     def content_hash(self) -> str:

@@ -365,3 +365,43 @@ def match_posting_ai(posting_text: str, exps: list, certs: list, strength_profil
     valid = {e.id for e in exps}
     data["matches"] = [m for m in data.get("matches", []) if m.get("experience_id") in valid]
     return data
+
+
+# ── 경험 STAR 구조화 초안 ─────────────────────────────────────────────
+
+STAR_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "star_situation": {"type": "string"}, "star_task": {"type": "string"},
+        "star_action": {"type": "string"}, "star_result": {"type": "string"},
+        "competencies": {
+            "type": "array",
+            "items": {"type": "object", "properties": {"name": {"type": "string"}, "evidence": {"type": "string"}},
+                      "required": ["name", "evidence"], "additionalProperties": False},
+        },
+        "questions": {"type": "array", "items": {"type": "string"}},
+    },
+    "required": ["star_situation", "star_task", "star_action", "star_result", "competencies", "questions"],
+    "additionalProperties": False,
+}
+
+STAR_PROMPT = """당신은 취업 준비생의 경험 글을 STAR(상황·과제·행동·결과)로 다시 정리해 주는 편집자입니다.
+
+원칙(가장 중요):
+- 지원자가 적은 내용만 씁니다. 적혀 있지 않은 사실·성과·숫자·기간·인원·기관명은 절대 만들지 않습니다.
+- 지원자의 문장을 옮기거나 짧게 다듬기만 합니다. 과장하거나 새 표현으로 성과를 부풀리지 않습니다.
+- 어느 칸에 넣을 내용이 글에 없으면 그 칸은 빈 문자열("")로 둡니다.
+- 비어 있거나 모호한 칸은 questions 에 '무엇을 더 적으면 되는지' 묻는 질문으로 적습니다(최대 4개).
+  결과에 수치가 없으면 "실제로 잰 값이 있다면" 적어 달라고 묻되, 숫자를 예로 지어내지 않습니다.
+- competencies: 글에 근거가 있는 핵심 역량 3~5개. evidence 에는 그 근거가 된 지원자의 문장을 그대로 인용합니다.
+- 모두 한국어로 씁니다."""
+
+
+def structure_experience(exp, role_name: str) -> dict:
+    """경험 1개 → STAR 초안 · 역량(근거 인용) · 추가로 물어볼 질문. 화면에서 확인한 뒤 저장합니다."""
+    block = _experience_block(exp, role_name, [])
+    prompt = PARA.join([f"지원 직무(참고): {role_name}", "경험:", json.dumps(block, ensure_ascii=False, indent=1)])
+    data = _call(STAR_PROMPT, prompt, STAR_SCHEMA, "experience_star")
+    data["competencies"] = [c for c in data.get("competencies", []) if c.get("name")][:5]
+    data["questions"] = [q for q in data.get("questions", []) if q][:4]
+    return data

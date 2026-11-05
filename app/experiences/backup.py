@@ -14,7 +14,8 @@ from .models import CATEGORIES, Certificate, Experience, Snapshot
 
 FORMAT = "growly-backup"
 VERSION = 1
-EXP_FIELDS = ("title", "category", "organization", "period", "role", "content", "strengths", "keywords", "reflection")
+EXP_FIELDS = ("title", "category", "organization", "period", "role", "content", "strengths", "keywords", "reflection",
+              "star_situation", "star_task", "star_action", "star_result", "competencies", "related_roles")
 CERT_FIELDS = ("name", "score", "acquired", "issuer", "note")
 STRENGTH_FIELDS = ("filename", "extracted_text", "parsed_json", "ai_json", "ai_role")
 APP_FIELDS = ("company", "position", "role_code", "status", "applied_at", "deadline", "url", "company_info", "talent",

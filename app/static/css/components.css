@@ -428,3 +428,39 @@ dialog.drawer::backdrop { background: rgba(43, 44, 48, .2); backdrop-filter: blu
 .req-support ol { margin: 0; padding-left: 20px; display: grid; gap: 10px; font-size: .88rem; }
 .req-support .chips { margin-top: 6px; }
 .posting-stats b small { font-size: .9rem; color: var(--muted); }
+
+/* ── 경험 상세·수정: STAR · 역량 추천 · 관련 직무 · 활용 내역 ─────────────────── */
+.exp-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 320px); gap: 22px; align-items: start; }
+.exp-main { display: grid; gap: 20px; }
+.exp-main h2 { font-size: 1rem; margin-bottom: 14px; }
+.exp-side { display: grid; gap: 20px; position: sticky; top: 96px; }
+.star-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.star-grid textarea { min-height: 120px; }
+.star-grid textarea.is-draft { box-shadow: var(--inset), 0 0 0 2px var(--tone-200); }
+.star-letter { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; margin-right: 4px;
+  background: var(--tone-50); color: var(--tone-700); font-family: var(--font-display); font-size: .74rem; }
+.ask-box { margin-top: 14px; padding: 12px 16px; border-radius: 16px; background: var(--tone-50); font-size: .84rem; }
+.ask-box ul { margin: 6px 0 0; padding-left: 18px; }
+.comp-suggest { display: flex; flex-wrap: wrap; gap: 8px; }
+.comp-chip { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 1px; border: 0; cursor: pointer; font: inherit;
+  padding: 7px 13px; border-radius: 14px; background: var(--bg); box-shadow: var(--raise-sm); color: var(--ink); font-size: .82rem;
+  font-weight: 600; text-align: left; max-width: 280px; }
+.comp-chip small { font-weight: 400; font-size: .7rem; color: var(--muted); }
+.comp-chip.ai { color: var(--tone-700); }
+.comp-chip.added { box-shadow: var(--inset-sm); opacity: .7; }
+.role-checks { display: flex; flex-wrap: wrap; gap: 6px; }
+.role-check { margin: 0; cursor: pointer; }
+.role-check input { position: absolute; opacity: 0; pointer-events: none; }
+.role-check span { display: inline-block; padding: 5px 11px; border-radius: 999px; font-size: .78rem; color: var(--muted);
+  background: var(--bg); box-shadow: var(--raise-sm); }
+.role-check input:checked + span { color: var(--tone-700); font-weight: 600; box-shadow: var(--inset-sm); }
+.role-check input:focus-visible + span { outline: 2px solid var(--tone-300); outline-offset: 2px; }
+.side-h { font-size: .74rem; color: var(--muted); margin: 12px 0 6px; }
+.use-list, .gap-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; font-size: .84rem; }
+.use-list small, .gap-list p { display: block; color: var(--muted); font-size: .76rem; margin: 2px 0 0; }
+.gap-list a { color: var(--ink); }
+@media (max-width: 980px) {
+  .exp-layout { grid-template-columns: 1fr; }
+  .exp-side { position: static; }
+}
+@media (max-width: 640px) { .star-grid { grid-template-columns: 1fr; } }
