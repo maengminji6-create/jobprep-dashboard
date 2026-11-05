@@ -26,7 +26,7 @@
       {% if rec.deadline %}<span>마감일 <b>{{ rec.deadline }}</b></span>{% endif %}
       <span>문항 <b>{{ rec.qa|length }}</b> · 총 <b>{{ '{:,}'.format(rec.total_chars) }}</b>자</span>
       {% if rec.url %}<a href="{{ rec.url }}" target="_blank" rel="noopener noreferrer">공고 원문 ↗</a>{% endif %}
-      {% if posting %}<a href="{{ url_for('experiences.posting_detail', pa_id=posting.id) }}">공고 매칭 분석 보기 →</a>{% endif %}
+      {% if posting and legacy_on %}<a href="{{ url_for('experiences.posting_detail', pa_id=posting.id) }}">공고 매칭 분석 보기 →</a>{% endif %}
     </div>
   </div>
 </section>

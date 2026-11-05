@@ -3,8 +3,17 @@ import json
 from ..core.models_base import TimestampMixin, UserOwnedMixin
 from ..extensions import db
 
-CATEGORIES = ["인턴·실무", "프로젝트", "대외활동", "공모전·수상", "동아리·학회", "아르바이트",
-              "교육·수료", "자격증·어학", "해외경험", "봉사", "기타"]
+# 경험 유형 7개. 예전 분류(파일·저장본·옛 데이터)는 normalize_category()가 바꿔 줌
+CATEGORIES = ["인턴·직장 경험", "프로젝트", "대외활동", "공모전·수상", "아르바이트", "교육·자격증", "기타"]
+CERT_CATEGORY = "자격증·어학"  # 파일에서 읽은 자격증·어학 행 표시. 경험이 아니라 Certificate 로 저장
+OLD_CATEGORIES = {"인턴·실무": "인턴·직장 경험", "동아리·학회": "대외활동", "교육·수료": "교육·자격증",
+                  CERT_CATEGORY: "교육·자격증", "해외경험": "기타", "봉사": "기타"}
+
+
+def normalize_category(value: str) -> str:
+    value = (value or "").strip()
+    value = OLD_CATEGORIES.get(value, value)
+    return value if value in CATEGORIES else "기타"
 
 
 class ExperienceUpload(UserOwnedMixin, TimestampMixin, db.Model):
@@ -39,13 +48,20 @@ class Experience(UserOwnedMixin, TimestampMixin, db.Model):
     upload_id = db.Column(db.Integer, db.ForeignKey("experience_upload.id", ondelete="SET NULL"))
     comments = db.relationship("ExperienceComment", cascade="all, delete-orphan")  # SQLite도 함께 삭제되도록 ORM이 지움
     exclusions = db.relationship("TopExclusion", cascade="all, delete-orphan")
+    analysis = db.relationship("ExperienceAnalysis", cascade="all, delete-orphan", uselist=False)
+    strength_links = db.relationship("StrengthLink", cascade="all, delete-orphan")
 
     BASE_FIELDS = ("role", "content", "strengths", "keywords", "reflection")
     STAR_FIELDS = ("star_situation", "star_task", "star_action", "star_result")
     TEXT_FIELDS = BASE_FIELDS + STAR_FIELDS  # 합치기·분석·백업·이력 PDF가 함께 다루는 글 칸
-    TEXT_LABELS = {"role": "나의 역할", "content": "내용", "strengths": "강점·성과", "keywords": "키워드",
-                   "reflection": "느낀점", "star_situation": "상황 (S)", "star_task": "과제 (T)",
-                   "star_action": "행동 (A)", "star_result": "결과 (R)"}
+    TEXT_LABELS = {"role": "나의 역할", "content": "수행한 업무·활동", "strengths": "강점·성과 메모", "keywords": "키워드",
+                   "reflection": "느낀점", "star_situation": "상황·문제 (S)", "star_task": "과제·목표 (T)",
+                   "star_action": "행동·해결 과정 (A)", "star_result": "결과·성과 (R)"}
+
+    @property
+    def star_filled(self) -> int:
+        """STAR 4칸 중 채운 칸 수."""
+        return sum(1 for f in self.STAR_FIELDS if (getattr(self, f) or "").strip())
 
     @property
     def full_text(self) -> str:

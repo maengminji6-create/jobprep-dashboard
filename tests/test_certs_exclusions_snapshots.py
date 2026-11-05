@@ -28,11 +28,9 @@ def test_trade_certificate_is_relevant_to_overseas_sales():
 
 def test_certificate_card_shows_relevance_and_boosts_role(auth_client, user):
     _add(user, "바이어 응대 인턴", "해외 바이어 견적 대응과 수출 오더 관리")
-    before = auth_client.get("/experiences/?role=overseas_sales").get_data(as_text=True)
     auth_client.post("/experiences/certificate", data={"cert_name": "국제무역사 1급", "cert_score": "합격"})
-    page = auth_client.get("/experiences/?role=overseas_sales").get_data(as_text=True)
-    assert "국제무역사 1급" in page and "무역 실무 전반" in page and 'style="--v:85"' in page
-    assert "자격증 +" in page and "자격증 +" not in before
+    manage = auth_client.get("/experiences/manage?role=overseas_sales").get_data(as_text=True)
+    assert "국제무역사 1급" in manage and "무역 실무 전반" in manage and "해외영업 관련 높음" in manage
 
 
 def test_excel_certificate_rows_become_certificates(auth_client, user):
@@ -48,19 +46,6 @@ def test_excel_certificate_rows_become_certificates(auth_client, user):
     assert "자격증·어학 1개" in r.get_data(as_text=True)
     assert [c.name for c in db.session.query(Certificate).filter_by(user_id=user.id)] == ["무역영어 1급"]
     assert [e.title for e in db.session.query(Experience).filter_by(user_id=user.id)] == ["포워딩 인턴"]
-
-
-def test_exclude_from_top3_promotes_next_and_restore(auth_client, user):
-    exps = [_add(user, f"포워딩 경험 {i}", "포워딩 FCL 부킹 선적 운임" + " 물류" * (5 - i)) for i in range(4)]
-    page = auth_client.get("/experiences/?role=forwarding").get_data(as_text=True)
-    assert "포워딩 경험 3" not in page.split('id="certs"')[0]  # 4위는 TOP 3 밖
-    auth_client.post(f"/experiences/{exps[0].id}/exclude", data={"role": "forwarding"})
-    top = auth_client.get("/experiences/?role=forwarding").get_data(as_text=True).split('id="certs"')[0]
-    assert "포워딩 경험 3" in top and "TOP 3에서 뺀 경험" in top
-    # 다른 직무에는 영향 없음
-    assert db.session.query(TopExclusion).filter_by(role_code="scm").count() == 0
-    auth_client.post(f"/experiences/{exps[0].id}/include", data={"role": "forwarding"})
-    assert db.session.query(TopExclusion).count() == 0
 
 
 def test_snapshot_save_load_export_import(auth_client, user):
@@ -104,8 +89,8 @@ def test_snapshots_certs_exclusions_are_private(app, client):
     db.session.commit()
     login(client, a.email)
     for url in (f"/experiences/data/{snap.id}/load", f"/experiences/data/{snap.id}/delete",
-                f"/experiences/certificate/{cert.id}/delete", f"/experiences/{e.id}/exclude"):
+                f"/experiences/certificate/{cert.id}/delete"):
         assert client.post(url).status_code == 404, url
     assert client.get(f"/experiences/data/{snap.id}/download").status_code == 404
     assert client.get(f"/experiences/certificate/{cert.id}/edit").status_code == 404
-    assert "B 자격증" not in client.get("/experiences/").get_data(as_text=True)
+    assert "B 자격증" not in client.get("/experiences/manage").get_data(as_text=True)

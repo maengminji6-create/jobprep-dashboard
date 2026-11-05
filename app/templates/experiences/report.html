@@ -26,7 +26,7 @@
 <div class="report-bar no-print">
   <span>인쇄 창에서 <b>대상: PDF로 저장</b>을 고르세요. 더 깔끔하게 하려면 '머리글과 바닥글'을 끄세요.</span>
   <button class="btn" type="button" onclick="window.print()">⤓ PDF로 저장</button>
-  <a class="btn secondary" href="{{ url_for('experiences.index') }}">← 대시보드</a>
+  <a class="btn secondary" href="{{ url_for('experiences.index') }}">← 홈</a>
 </div>
 
 <main class="report">
@@ -36,42 +36,28 @@
     <p>{{ today.strftime('%Y.%m.%d') }} 기준 · 경험 {{ exp_count }}개 · 자격증·어학 {{ certs|length }}개</p>
   </header>
 
-  {% if recs %}
+  {% if board.competencies %}
   <section class="r-sec">
-    <h2>추천 직무</h2>
+    <h2>경험에서 확인된 핵심 역량</h2>
     <div class="r-cards">
-      {% for r in recs %}
-      <div class="r-card">
-        <div class="r-card-top"><span class="r-n">{{ loop.index }}</span><span class="r-score">{{ r.score }}<small>점</small></span></div>
-        <b>{{ r.name }}</b>
-        <small>{{ r.group_name }}</small>
-        {% if r.experiences %}<p>근거 · {{ r.experiences|join(', ') }}</p>{% endif %}
-      </div>
+      {% for c in board.competencies[:6] %}
+      <div class="r-card"><b>{{ c.name }}</b><small>경험 {{ c.exp_count }}개</small>
+        <p>근거 · {{ c['items'][:3]|map(attribute='exp')|map(attribute='title')|join(', ') }}</p></div>
       {% endfor %}
     </div>
+    <p class="r-meta">AI 분석에서 경험 원문 인용이 확인된 역량만 실었어요.</p>
   </section>
   {% endif %}
 
-  {% if top3 %}
+  {% if board.analyzed %}
   <section class="r-sec">
-    <h2>{{ role_name }} TOP 3 경험과 어필 포인트</h2>
-    {% for a in top3 %}{% set c = comments[a.id].data %}
-    <article class="r-item">
-      <div class="r-item-head">
-        <span class="r-n">{{ loop.index }}</span>
-        <div><h3>{{ a.title }}</h3>
-          <p class="r-meta">{{ a.category }}{% if a.period %} · {{ a.period }}{% endif %} · 적합도 {{ a.roles[role].score }} · 강점 {{ a.strength }}</p></div>
-      </div>
-      {% if c.summary %}<p>{{ c.summary }}</p>{% endif %}
-      {% if c.appeal_points %}<ul>{% for p in c.appeal_points %}<li>{{ p }}</li>{% endfor %}</ul>{% endif %}
-      {% if c.essay_question %}
-      <div class="r-note">
-        <p><b class="r-lead">추천 문항</b> {{ c.essay_question }}</p>
-        {% if c.opening_sentence %}<p><b class="r-lead">첫 문장 예시</b> “{{ c.opening_sentence }}”</p>{% endif %}
-      </div>
-      {% endif %}
-    </article>
-    {% endfor %}
+    <h2>직무별 확인된 역량</h2>
+    <table class="r-table">
+      <thead><tr><th>직무</th><th>확인된 역량</th><th>내용</th></tr></thead>
+      <tbody>{% for j in board.jobs %}<tr><td><b>{{ j.name }}</b></td><td>{{ j.confirmed }} / {{ j.total }}</td>
+        <td>{{ j.names|join(', ') or '-' }}</td></tr>{% endfor %}</tbody>
+    </table>
+    <p class="r-meta">무역업 신입 직무에서 흔히 요구하는 역량(일반 기준) 중 내 경험에서 확인된 것이에요. 점수가 아니에요.</p>
   </section>
   {% endif %}
 
@@ -90,9 +76,9 @@
   <section class="r-sec">
     <h2>자격증·어학</h2>
     <table class="r-table">
-      <thead><tr><th>이름</th><th>점수·등급</th><th>취득일</th><th>발급 기관</th><th>{{ role_name }} 관련도</th></tr></thead>
+      <thead><tr><th>이름</th><th>점수·등급</th><th>취득일</th><th>발급 기관</th></tr></thead>
       <tbody>{% for v in certs %}{% set c = v.c %}<tr><td><b>{{ c.name }}</b></td><td>{{ c.score or '-' }}</td>
-        <td>{{ c.acquired or '-' }}</td><td>{{ c.issuer or '-' }}</td><td>{{ v.rel }}</td></tr>{% endfor %}</tbody>
+        <td>{{ c.acquired or '-' }}</td><td>{{ c.issuer or '-' }}</td></tr>{% endfor %}</tbody>
     </table>
   </section>
   {% endif %}

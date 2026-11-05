@@ -38,6 +38,8 @@ class BaseConfig:
     AI_VISION_COST = int(os.environ.get("AI_VISION_COST") or 3)         # 이미지·스캔 PDF 읽기 1번 = 무료 3회
     # 사용자 키 암호화 키. 비우면 SECRET_KEY에서 만듦(그래서 SECRET_KEY를 바꾸면 저장된 사용자 키는 다시 넣어야 함)
     ENCRYPTION_KEY = os.environ.get("ENCRYPTION_KEY", "")
+    # 리뉴얼로 잠시 쉬는 기능(공고 매칭·면접 준비·취업 일정). 1이면 메뉴와 화면을 다시 켬. 데이터는 꺼도 그대로 남음
+    LEGACY_FEATURES = os.environ.get("LEGACY_FEATURES") == "1"
 
 
 class DevConfig(BaseConfig):
@@ -54,6 +56,7 @@ class TestConfig(BaseConfig):
     WTF_CSRF_ENABLED = False
     OPENAI_API_KEY = ""  # 테스트에서는 실제 API를 부르지 않음
     AI_FREE_PER_USER = 0  # 횟수 제한은 테스트에서 따로 켬
+    LEGACY_FEATURES = True  # 쉬는 기능의 기존 테스트도 계속 돌림(꺼진 상태는 test_menu 에서 따로 확인)
 
 
 class ProdConfig(BaseConfig):

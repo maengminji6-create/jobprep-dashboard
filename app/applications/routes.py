@@ -1,4 +1,4 @@
-from flask import abort, flash, jsonify, redirect, render_template, request, url_for
+from flask import abort, flash, jsonify, redirect, render_template, request, session, url_for
 from flask_login import login_required
 
 from ..core.job_status import normalize
@@ -9,8 +9,8 @@ from ..experiences.models import Experience, PostingAnalysis
 from ..extensions import db
 from . import bp
 from .models import STATUSES, ApplicationRecord, ApplicationVersion
-from .services import (check_answer_draft, dump_qa, read_qa, save_version, suggest_for_question, sync_from_application,
-                       used_experiences)
+from .services import (check_answer_draft, draft_evidence, dump_qa, read_qa, save_version, suggest_for_question,
+                       sync_from_application, used_experiences)
 
 FIELDS = ("company", "position", "role_code", "status", "applied_at", "deadline", "url",
           "company_info", "talent", "notes")
@@ -184,17 +184,23 @@ def draft():
         return jsonify({"error": "먼저 '경험 추천'에서 이 문항에 쓸 경험을 골라 주세요."}), 400
     posting = _posting_or_none(request.form.get("posting_id", type=int))
     question = (request.form.get("q") or "").strip()[:500]
-    role = (posting.role_code if posting and posting.role_code in ROLE_BY_CODE else "") or "overseas_sales"
+    from ..core.job_competencies import JOB_BY_CODE
+    if posting and posting.role_code in ROLE_BY_CODE:
+        role_name = ROLE_BY_CODE[posting.role_code]["name"]
+    else:  # 공고가 없으면 직무 연결에서 마지막으로 고른 직무
+        role_name = JOB_BY_CODE.get(session.get("job_role"), JOB_BY_CODE["overseas_sales"])["name"]
+    evidence = draft_evidence(exps)
     try:
         data = ai_client.draft_answer(question, request.form.get("limit", ""), exps,
-                                      posting.posting_text if posting else "", ROLE_BY_CODE[role]["name"])
+                                      posting.posting_text if posting else "", role_name, evidence=evidence)
     except ai_client.AiError as exc:
         return jsonify({"error": str(exc)}), 502
     source = "\n".join([question, request.form.get("limit", "")] + [e.full_text for e in exps]
                         + [posting.posting_text if posting else ""])
     answer, notes = check_answer_draft(data.get("answer", ""), source)
+    basis = sorted({x["이름"] for ev in evidence for x in ev["역량"] + ev["강점"]})
     return jsonify({"answer": answer, "notes": notes, "missing": data.get("missing", []),
-                    "exp_ids": [e.id for e in exps]})
+                    "exp_ids": [e.id for e in exps], "role": role_name, "basis": basis})
 
 
 @bp.route("/<int:rec_id>/delete", methods=["POST"])

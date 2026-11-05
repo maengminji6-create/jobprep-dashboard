@@ -8,7 +8,7 @@ import io
 import re
 from datetime import date, datetime
 
-from .models import CATEGORIES
+from .models import CATEGORIES, CERT_CATEGORY, OLD_CATEGORIES
 
 SPREADSHEET_EXT = {"xlsx", "xlsm", "xls", "csv"}
 ALLOWED_EXT = {"docx", "pdf", "txt", "md"} | SPREADSHEET_EXT
@@ -19,17 +19,16 @@ HEADER_RE = re.compile(
 _DATE = r"\d{4}\s*[.\-/년]\s*\d{1,2}\s*월?(?:\s*[.\-/]\s*\d{1,2}\s*일?)?\.?"  # 2024.03 · 2024년 3월 · 2024.03.15.
 PERIOD_RE = re.compile(rf"({_DATE})\s*[~\-–—]\s*({_DATE}|현재|진행\s*중)")
 
+PARSE_CATEGORIES = CATEGORIES + [CERT_CATEGORY]  # 파일 행 분류: 경험 유형 + 자격증 행 표시
 CATEGORY_HINTS = [
-    ("인턴·실무", ["인턴", "intern", "현장실습", "실습", "실무", "근무", "재직", "계약직"]),
+    ("인턴·직장 경험", ["인턴", "intern", "현장실습", "실습", "실무", "근무", "재직", "계약직", "정규직", "입사"]),
     ("공모전·수상", ["공모전", "수상", "대상", "최우수", "우수상", "장려상", "경진대회", "대회", "논문"]),
-    ("해외경험", ["교환학생", "어학연수", "워킹홀리데이", "해외봉사", "해외 인턴"]),
-    ("대외활동", ["서포터즈", "기자단", "대외활동", "홍보대사", "앰버서더"]),
-    ("동아리·학회", ["동아리", "학회", "소모임"]),
+    ("기타", ["교환학생", "어학연수", "워킹홀리데이", "해외봉사"]),  # 해외경험: 아래 '과정'·'교육'에 먼저 걸리지 않게
+    ("대외활동", ["서포터즈", "기자단", "대외활동", "홍보대사", "앰버서더", "동아리", "학회", "소모임"]),
     ("프로젝트", ["프로젝트", "project", "팀플", "캡스톤"]),
     ("아르바이트", ["아르바이트", "알바", "파트타임"]),
-    ("교육·수료", ["교육", "수료", "부트캠프", "아카데미", "과정"]),
-    ("자격증·어학", ["자격증", "토익", "오픽", "toeic", "opic", "hsk", "jlpt", "취득"]),
-    ("봉사", ["봉사"]),
+    ("교육·자격증", ["교육", "수료", "부트캠프", "아카데미", "과정"]),
+    (CERT_CATEGORY, ["자격증", "토익", "오픽", "toeic", "opic", "hsk", "jlpt", "취득"]),
 ]
 
 
@@ -176,7 +175,7 @@ def split_experiences(text: str) -> list[dict]:
         period = f"{m.group(1)} ~ {m.group(2)}".replace(" ", "") if m else ""
         cat = guess_category(title, body)
         results.append({"title": title[:200] or "이름 없는 경험", "content": body or title, "period": period,
-                        "category": cat if cat in CATEGORIES else "기타"})
+                        "category": cat if cat in PARSE_CATEGORIES else "기타"})
     return results
 
 
@@ -317,12 +316,13 @@ def _make_item(title, period, category, organization, texts: dict):
         m = PERIOD_RE.search(f"{title}\n{body}")
         period = f"{m.group(1)} ~ {m.group(2)}".replace(" ", "") if m else ""
     # 직접 적은 종류(예: '봉사장학생', '논문')를 먼저 보고, 못 정하면 제목·내용으로 추정
-    cat = category if category in CATEGORIES else guess_category(category)
+    known = category if category in PARSE_CATEGORIES else OLD_CATEGORIES.get(category)  # 예전 분류 이름도 받음
+    cat = known or guess_category(category)
     if cat == "기타":
         cat = guess_category(title, body)
-    if category and category not in CATEGORIES:  # 원래 적은 종류는 내용에 남겨 분석에 활용
+    if category and (not known or known == "기타" != category):  # 원래 적은 종류(예: 봉사)는 내용에 남겨 분석에 활용
         texts["content"] = f"종류: {category}\n{texts.get('content', '')}".strip()
-    item = {"title": title[:200], "period": period[:60], "category": cat if cat in CATEGORIES else "기타",
+    item = {"title": title[:200], "period": period[:60], "category": cat if cat in PARSE_CATEGORIES else "기타",
             "organization": organization[:120]}
     item.update({f: texts.get(f, "") for f in TEXT_FIELD_HINTS})
     return item

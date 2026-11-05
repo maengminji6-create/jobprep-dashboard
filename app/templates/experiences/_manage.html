@@ -19,17 +19,26 @@
         <input id="title" type="text" name="title" placeholder="예: LG 호주 법인 인턴 (같은 이름이 있으면 그 경험에 합쳐져요)"></div>
     </div>
     <div class="row">
-      <div class="field"><label>분류</label><select name="category"><option value="">자동/그대로</option>{% for c in categories %}<option>{{ c }}</option>{% endfor %}</select></div>
+      <div class="field"><label>경험 유형</label><select name="category"><option value="">자동/그대로</option>{% for c in categories %}<option>{{ c }}</option>{% endfor %}</select></div>
       <div class="field"><label>기관·회사</label><input type="text" name="organization"></div>
       <div class="field"><label>기간</label><input type="text" name="period" placeholder="2025.04 ~ 2025.08"></div>
     </div>
     <div class="grid grid-2" style="gap:12px">
       <div class="field"><label>나의 역할</label><textarea name="role" placeholder="예: 장기재고 계산, S&OP 회의 자료 작성"></textarea></div>
-      <div class="field"><label>내용 (상황·행동·결과)</label><textarea name="content" placeholder="숫자 성과를 함께 적으면 분석이 정확해져요"></textarea></div>
-      <div class="field"><label>강점·성과</label><textarea name="strengths" placeholder="예: 재고 리포트 자동화로 작성 시간 50% 단축"></textarea></div>
+      <div class="field"><label>수행한 업무·활동</label><textarea name="content" placeholder="실제로 한 일을 편하게 적어 주세요. STAR로는 아래에서 나눠 적을 수 있어요"></textarea></div>
+      <div class="field"><label>강점·성과 메모</label><textarea name="strengths" placeholder="예: 재고 리포트 자동화로 작성 시간 50% 단축"></textarea></div>
       <div class="field"><label>느낀점</label><textarea name="reflection"></textarea></div>
     </div>
-    <div class="field"><label>키워드 (쉼표나 #으로 구분)</label><input type="text" name="keywords" placeholder="#꼼꼼함 #엑셀 #S&OP"></div>
+    <details class="star-quick">
+      <summary>STAR로 바로 정리하기 <span class="muted">(선택 · 비워 두면 추가한 뒤 이어서 채울 수 있어요)</span></summary>
+      <div class="grid grid-2" style="gap:12px;margin-top:10px">
+        <div class="field"><label><b class="star-letter">S</b> 상황·문제</label><textarea name="star_situation" placeholder="언제·어디서·어떤 문제가 있었나요?"></textarea></div>
+        <div class="field"><label><b class="star-letter">T</b> 과제·목표</label><textarea name="star_task" placeholder="내가 맡은 역할과 과제는?"></textarea></div>
+        <div class="field"><label><b class="star-letter">A</b> 행동·해결 과정</label><textarea name="star_action" placeholder="내가 직접 한 일을 순서대로"></textarea></div>
+        <div class="field"><label><b class="star-letter">R</b> 결과·성과</label><textarea name="star_result" placeholder="바뀐 점·받은 피드백. 실제로 잰 숫자가 있을 때만 숫자로"></textarea></div>
+      </div>
+    </details>
+    <div class="field"><label>관련 역량·키워드 (쉼표나 #으로 구분)</label><input type="text" name="keywords" placeholder="#꼼꼼함 #엑셀 #S&OP"></div>
     <p class="muted" style="font-size:.8rem">기존 경험을 고르면 적은 칸만 덧붙여져요. 이미 있는 문장과 키워드는 중복으로 들어가지 않아요.</p>
     <button class="btn" type="submit">저장하고 분석에 반영</button>
   </form>
@@ -46,7 +55,7 @@
       <div class="field"><label>발급 기관 (선택)</label><input type="text" name="cert_issuer" placeholder="예: 한국무역협회"></div>
       <div class="field" style="flex:2 1 260px"><label>메모 (선택)</label><input type="text" name="cert_note" placeholder="예: 인코텀즈·신용장 실무 학습"></div>
     </div>
-    <p class="muted" style="font-size:.8rem">같은 이름을 다시 넣으면 점수·취득일이 업데이트돼요. 자격증은 직무 적합도 계산에도 반영돼요.</p>
+    <p class="muted" style="font-size:.8rem">같은 이름을 다시 넣으면 점수·취득일이 업데이트돼요.</p>
     <button class="btn" type="submit">자격증 저장</button>
   </form>
 

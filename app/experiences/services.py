@@ -12,7 +12,7 @@ import re
 NL = "\n"
 
 from ..core.scoping import create_owned, owned
-from .models import CATEGORIES, Experience
+from .models import Experience, normalize_category
 
 SCALAR_FIELDS = ("category", "organization", "period")
 
@@ -57,7 +57,7 @@ def apply_fields(exp: Experience, fields: dict) -> None:
     for f in SCALAR_FIELDS:
         v = (fields.get(f) or "").strip()
         if v and not (f == "category" and v == "기타" and exp.category not in ("", "기타")):
-            setattr(exp, f, v if f != "category" or v in CATEGORIES else "기타")
+            setattr(exp, f, normalize_category(v) if f == "category" else v)
     for f in Experience.TEXT_FIELDS:
         new = fields.get(f) or ""
         if f == "keywords":
@@ -110,11 +110,6 @@ def certificate_from_item(item: dict) -> dict:
 
 # ── TOP 3 에서 빼기 ──────────────────────────────────────────────────
 
-def excluded_ids(role_code: str) -> set[int]:
-    from .models import TopExclusion
-    return {x.experience_id for x in owned(TopExclusion).filter(TopExclusion.role_code == role_code)}
-
-
 # ── 자소서 어필 코멘트 ───────────────────────────────────────────────
 
 def rule_comment(a: dict, role_code: str, role_name: str) -> dict:
@@ -132,7 +127,9 @@ def rule_comment(a: dict, role_code: str, role_name: str) -> dict:
         points.append(f"직접 적은 키워드({', '.join(a['keywords'][:3])})를 행동 사례로 풀어 쓰세요.")
     if not points:
         points.append("맡은 역할과 그 결과를 상황→행동→결과 순서로 정리해 보세요.")
-    return {"summary": f"{role_name} 적합도 {fit['score']}점 경험이에요.",
+    summary = (f"{role_name}와 이어지는 단어({', '.join(fit['hits'][:3])})가 들어 있는 경험이에요." if fit["hits"]
+               else f"아직 {role_name}와 바로 이어지는 단어는 없는 경험이에요.")
+    return {"summary": summary,
             "appeal_points": points[:3], "essay_question": essay_question_for(a), "opening_sentence": "",
             "improve": "결과를 숫자(%, 건수, 기간)로 적으면 더 설득력 있어요." if not a["numbers"]
             else "본인이 직접 한 행동과 팀이 한 일을 구분해 적어 보세요."}

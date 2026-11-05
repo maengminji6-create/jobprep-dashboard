@@ -1,49 +1,30 @@
-from flask import current_app, flash, redirect, render_template, request, session, url_for
+from flask import current_app, flash, redirect, render_template, request, url_for
 from flask_login import login_required
 
 from ..core.scoping import create_owned, get_owned_or_404, owned
-from ..core.trade_roles import ROLE_BY_CODE
-from ..experiences.analyzer import analyze_all, recommend_roles
 from ..experiences.models import Experience
 from ..experiences.parser import extract_text
 from ..extensions import db
-from ..integrations import ai_client
 from . import bp
 from .models import StrengthProfile
-from .services import (dump, experiences_hash, latest_profile, link_strengths, matrix, parse_manual,
-                       parse_strengths, profile_history)
+from .services import (MAX_STRENGTHS, SOURCES, dump, latest_profile, parse_manual, parse_strengths, preview_items,
+                       profile_history, strengths_from_form)
 
 ALLOWED = {"pdf", "docx", "txt", "md"}
-
-
-def _role(exps) -> str:
-    role = request.values.get("role")
-    if role in ROLE_BY_CODE:
-        return role
-    if session.get("exp_role") in ROLE_BY_CODE:
-        return session["exp_role"]
-    recs = recommend_roles(analyze_all(exps))
-    return recs[0]["code"] if recs else "overseas_sales"
 
 
 @bp.route("/")
 @login_required
 def index():
-    exps = owned(Experience).order_by(Experience.created_at).all()
-    profile = latest_profile()
-    role = _role(exps)
-    linked, mat, ai, ai_stale = [], None, None, False
-    if profile:
-        linked = link_strengths(profile.strengths, exps)
-        mat = matrix(linked, exps)
-        if profile.ai_json:
-            ai = profile.ai
-            ai_stale = profile.ai_role != role or profile.ai_hash != experiences_hash(exps, role, profile.id)
-    return render_template("strengths/index.html", profile=profile, linked=linked, mat=mat, ai=ai,
-                           ai_stale=ai_stale, ai_role_name=ROLE_BY_CODE.get(profile.ai_role, {}).get("name", "")
-                           if profile else "", role=role, role_name=ROLE_BY_CODE[role]["name"],
-                           exps={e.id: e for e in exps}, exp_count=len(exps), ai_enabled=ai_client.enabled(),
-                           history=profile_history())
+    return render_template("strengths/index.html", profile=latest_profile(), history=profile_history(),
+                           exp_count=owned(Experience).count(), sources=SOURCES)
+
+
+def _preview(source: str, filename: str, text: str, parsed: dict, profile=None):
+    """저장 전 확인 화면. 문서에서 읽은 강점을 그대로 보여 주고, 사용자가 고친 뒤 '저장'해야 반영됩니다."""
+    return render_template("strengths/preview.html", source=source, filename=filename, text=text, parsed=parsed,
+                           items=preview_items(parsed["strengths"], text), profile=profile, sources=SOURCES,
+                           max_strengths=MAX_STRENGTHS)
 
 
 @bp.route("/upload", methods=["POST"])
@@ -51,7 +32,7 @@ def index():
 def upload():
     f = request.files.get("file")
     pasted = (request.form.get("pasted") or "").strip()
-    filename, text = "직접 붙여넣은 결과", pasted
+    source, filename, text = "paste", "직접 붙여넣은 결과", pasted
     if f and f.filename:
         ext = f.filename.rsplit(".", 1)[-1].lower() if "." in f.filename else ""
         if ext not in ALLOWED:
@@ -63,74 +44,66 @@ def upload():
             current_app.logger.exception("강점 결과지 읽기 실패: %s", f.filename)
             flash(f"파일을 읽지 못했어요({exc.__class__.__name__}). 내용을 복사해 '직접 붙여넣기'로 넣어 보세요.", "error")
             return redirect(url_for("strengths.index"))
-        filename = f.filename[:255]
+        source, filename = "file", f.filename[:255]
     if len(text.strip()) < 30:
         flash("결과지에서 글자를 거의 읽지 못했어요. 스캔 이미지 PDF라면 결과 내용을 복사해 붙여넣어 주세요.", "error")
         return redirect(url_for("strengths.index"))
-    parsed = parse_strengths(text)
-    _save_profile(filename, text, parsed)
-    names = ", ".join(s["name"] for s in parsed["strengths"][:5])
-    if parsed["strengths"]:
-        flash(f"강점 {len(parsed['strengths'])}개를 찾았어요: {names}. 내 경험과 연결해 보여 드릴게요.", "success")
-    else:
-        flash("결과지는 저장했지만 강점 이름을 찾지 못했어요. AI 분석을 쓰거나 결과지 형식을 확인해 주세요.", "info")
-    return redirect(url_for("strengths.index"))
-
-
-def _save_profile(filename: str, text: str, parsed: dict) -> None:
-    """새 결과를 '사용 중'으로, 이전 결과지는 저장본으로 남겨 두고 언제든 다시 불러올 수 있게."""
-    for old in owned(StrengthProfile).all():
-        old.is_active = False
-    create_owned(StrengthProfile, filename=filename, extracted_text=text[:200000], parsed_json=dump(parsed),
-                 is_active=True)
-    db.session.commit()
+    return _preview(source, filename, text[:200000], parse_strengths(text))
 
 
 @bp.route("/manual", methods=["POST"])
 @login_required
 def manual():
-    """결과지 없이 강점을 직접 입력('강점: 설명' 한 줄에 하나, 또는 쉼표로 이름만)."""
+    """결과지 없이 강점을 직접 입력('강점: 설명' 한 줄에 하나, 또는 쉼표로 이름만) → 확인 화면."""
     text = (request.form.get("manual") or "").strip()
     parsed = parse_manual(text)
     if not parsed["strengths"]:
         flash("강점을 한 줄에 하나씩 적어 주세요. 예: '신중함: 잘못될 일을 미리 살펴요'", "error")
         return redirect(url_for("strengths.index"))
-    _save_profile("직접 입력한 강점", text, parsed)
-    flash(f"강점 {len(parsed['strengths'])}개를 저장했어요: {', '.join(s['name'] for s in parsed['strengths'][:5])}. "
-          "내 경험과 연결해 보여 드릴게요.", "success")
-    return redirect(url_for("strengths.index"))
+    return _preview("manual", "직접 입력한 강점", text, parsed)
 
 
-@bp.route("/ai", methods=["POST"])
+@bp.route("/<int:profile_id>/edit")
 @login_required
-def ai_link():
-    profile = latest_profile()
-    if not profile:
-        flash("먼저 강점 결과지를 올려 주세요.", "error")
+def edit(profile_id):
+    p = get_owned_or_404(StrengthProfile, profile_id)
+    return _preview(p.parsed.get("source") or ("manual" if p.parsed.get("method") == "manual" else "file"),
+                    p.filename, p.extracted_text or "", p.parsed, profile=p)
+
+
+@bp.route("/confirm", methods=["POST"])
+@login_required
+def confirm():
+    """확인 화면에서 고친 강점을 저장. profile_id 가 있으면 그 결과지를 고침(아니면 새 결과지로 '사용 중')."""
+    source = request.form.get("source") if request.form.get("source") in SOURCES else "paste"
+    text = (request.form.get("source_text") or "")[:200000]
+    filename = (request.form.get("filename") or SOURCES[source]).strip()[:255]
+    strengths = strengths_from_form(request.form, text)
+    if not strengths:
+        flash("저장할 강점이 없어요. 강점 이름을 하나 이상 남겨 주세요.", "error")
         return redirect(url_for("strengths.index"))
-    if not ai_client.enabled():
-        flash(ai_client.unavailable_message(), "info")
+    parsed = {"strengths": strengths, "method": request.form.get("method") or source, "source": source,
+              "tool": (request.form.get("tool") or "").strip()[:60],
+              "area": (request.form.get("area") or "").strip()[:200], "role": (request.form.get("role") or "").strip()[:200]}
+    pid = request.form.get("profile_id", type=int)
+    if pid:
+        p = get_owned_or_404(StrengthProfile, pid)
+        names = {s["name"] for s in strengths}
+        dropped = [lk for lk in p.links if lk.strength_name not in names]
+        for lk in dropped:  # 이름을 바꾸거나 뺀 강점의 경험 연결은 근거가 사라지므로 지움
+            db.session.delete(lk)
+        p.parsed_json = dump(parsed)
+        db.session.commit()
+        flash(f"강점 {len(strengths)}개로 고쳤어요." + (f" 빠진 강점의 경험 연결 {len(dropped)}개를 지웠어요." if dropped else ""),
+              "success")
         return redirect(url_for("strengths.index"))
-    exps = owned(Experience).order_by(Experience.created_at).all()
-    if not exps:
-        flash("연결할 경험이 아직 없어요. 경험 분석 화면에서 이력을 먼저 넣어 주세요.", "error")
-        return redirect(url_for("strengths.index"))
-    role = _role(exps)
-    try:
-        data, truncated = ai_client.link_strengths_ai(profile.extracted_text, [s["name"] for s in profile.strengths],
-                                                       exps, ROLE_BY_CODE[role]["name"])
-    except ai_client.AiError as exc:
-        flash(str(exc), "error")
-        return redirect(url_for("strengths.index"))
-    profile.ai_json = dump(data)
-    profile.ai_role = role
-    profile.ai_hash = experiences_hash(exps, role, profile.id)
+    for old in owned(StrengthProfile).all():
+        old.is_active = False
+    create_owned(StrengthProfile, filename=filename, extracted_text=text, parsed_json=dump(parsed), is_active=True)
     db.session.commit()
-    msg = f"{ROLE_BY_CODE[role]['name']} 기준으로 강점과 경험을 연결했어요."
-    if truncated:
-        msg += f" 결과지가 길어 앞 {ai_client.REPORT_CHAR_LIMIT:,}자만 분석했어요."
-    flash(msg, "success")
-    return redirect(url_for("strengths.index", _anchor="ai"))
+    flash(f"강점 {len(strengths)}개를 저장했어요: {', '.join(s['name'] for s in strengths[:5])}. "
+          "AI 분석에서 내 경험과 연결해 보세요.", "success")
+    return redirect(url_for("strengths.index"))
 
 
 @bp.route("/<int:profile_id>/activate", methods=["POST"])

@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% from "components/macros.html" import csrf, empty %}
+{% block title %}강점 사용 설명서{% endblock %}
+
+{% macro block_head(num, title, desc) %}
+<div class="block-head">
+  <div class="title"><span class="num">{{ num }}</span><div><h2>{{ title }}</h2><p>{{ desc }}</p></div></div>
+  {{ caller() if caller }}
+</div>
+{% endmacro %}
+
+{% macro evi(x) %}
+<div class="evi"><p><a href="{{ url_for('experiences.edit', exp_id=x.exp.id) }}">{{ x.exp.title }}</a>
+  {% if x.level %}<span class="badge lv-{{ {'충분': 'strong', '보통': 'mid', '약함': 'weak'}.get(x.level, 'mid') }}">근거 {{ x.level }}</span>{% endif %}
+  {% if x.label %}<span class="badge">{{ x.label }}</span>{% endif %}</p>
+  {% if x.quote %}<blockquote class="src-quote">“{{ x.quote }}”</blockquote>{% endif %}</div>
+{% endmacro %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <span class="eyebrow">My Strength Manual</span>
+    <h1>나의 강점 사용 설명서</h1>
+    <p>강점 진단과 경험 분석을 엮었어요. 모든 근거는 내 경험에 적힌 문장이고, 새로 지어낸 내용은 없어요.</p>
+  </div>
+  <div class="row no-print" style="gap:8px">
+    <button class="btn secondary" type="button" onclick="window.print()">⤓ 인쇄·PDF</button>
+    {% if saved_copy %}<a class="btn secondary" href="{{ url_for('analysis.manual') }}">지금 데이터로 보기</a>{% endif %}
+  </div>
+</div>
+
+{% if saved_copy %}
+<div class="card notice">저장본 <b>{{ saved_copy.name }}</b> · {{ m.generated_at }} 기준이에요. 그 뒤에 바꾼 경험·연결은 들어 있지 않아요.</div>
+{% else %}
+<div class="card manual-bar no-print">
+  <div><small class="muted">{{ m.generated_at }} 기준 · 경험 {{ m.basis.exps }}개 중 AI 분석 {{ m.basis.analyzed }}개 · 강점 연결 {{ m.basis.links }}개
+    {% if m.profile %} · 진단: {{ m.profile.filename }}{% if m.profile.tool %} ({{ m.profile.tool }}){% endif %}{% else %} · 진단 결과 없음{% endif %}</small></div>
+  <form method="post" action="{{ url_for('analysis.manual_save') }}" class="row" style="gap:8px;margin-left:auto">{{ csrf() }}
+    <input type="hidden" name="job" value="{{ code }}">
+    <input type="text" name="name" placeholder="저장 이름 (비우면 날짜·직무)" maxlength="120" style="min-width:200px">
+    <button class="btn sm" type="submit">이대로 저장</button></form>
+</div>
+{% endif %}
+
+{% if not m.strengths %}
+<section class="block">
+  <div class="card">{{ empty('아직 설명서에 담을 강점이 없어요', 'AI 분석에서 경험을 분석하거나 강점 진단 결과를 등록하고 경험과 연결하면 채워져요.') }}
+    <p style="text-align:center;margin:0"><a class="btn" href="{{ url_for('analysis.index') }}">AI 분석으로</a></p></div>
+</section>
+{% else %}
+
+{# ── 01 핵심 강점 ── #}
+<section class="block reveal" id="strengths">
+  {{ block_head('01', '핵심 강점', '진단과 경험이 일치한 강점 → 경험에서 새로 확인된 강점 → 근거가 부족한 진단 강점 순서예요.') }}
+  <div class="manual-list">
+    {% for s in m.strengths %}
+    <article class="card manual-card">
+      <div class="card-head"><h3>{{ s.name }}</h3>
+        <span class="badge {{ 'lv-strong' if s.status == '진단 · 경험 일치' else ('lv-weak' if '부족' in s.status else 'lv-mid') }}">{{ s.status }}</span>
+        <span class="badge">{{ s.source }} 기반</span></div>
+      {% if s.description %}<p class="diag-desc"><span class="src-field">진단 설명</span>{{ s.description }}</p>{% endif %}
+
+      <div class="grid grid-2 manual-grid">
+        <div><h4 class="side-h">강점이 드러난 경험 · 행동 근거</h4>
+          {% for x in s.evidence[:3] %}{{ evi(x) }}{% if x.reason %}<small class="muted">{{ x.reason }}</small>{% endif %}
+          {% else %}<p class="need">아직 경험 근거가 없어요.</p>{% endfor %}</div>
+        <div><h4 class="side-h">연결되는 직무</h4>
+          {% for j in s.jobs[:3] %}<p class="manual-job"><b>{{ j.name }}</b>{% for u in j.uses %}<small>{{ u.competency }} · {{ u.use }}</small>{% endfor %}</p>
+          {% else %}<p class="muted" style="font-size:.82rem">근거 경험의 역량이 아직 분석되지 않았어요.</p>{% endfor %}</div>
+      </div>
+      <div class="grid grid-2 manual-grid">
+        <div><h4 class="side-h">자기소개서 활용 키워드</h4>
+          <div class="chips">{% for k in s.keywords %}<span class="chip">{{ k }}</span>{% endfor %}</div></div>
+        <div><h4 class="side-h">면접 활용 소재</h4>
+          {% for x in s.interview %}<p class="manual-iv">'{{ s.name }}' 사례를 물으면 → <b>{{ x.exp.title }}</b>: “{{ x.quote }}”</p>
+          {% else %}<p class="muted" style="font-size:.82rem">근거가 충분한 경험이 아직 없어요.</p>{% endfor %}</div>
+      </div>
+      {% if s.gaps %}<div class="ask-box"><b>보완이 필요한 부분</b><ul>{% for g in s.gaps %}<li>{{ g }}</li>{% endfor %}</ul></div>{% endif %}
+    </article>
+    {% endfor %}
+  </div>
+  {% if m.missing %}<p class="muted small-note">경험에서 아직 확인되지 않은 역량 · {{ m.missing|join(', ') }}</p>{% endif %}
+</section>
+
+{# ── 02 상황별 활용 ── #}
+{% set st = m.situations %}
+<section class="block reveal" id="situations">
+  {% call block_head('02', '취업 준비 상황별 활용', m.job.name ~ ' 기준으로 문항·면접에 쓸 강점과 경험 조합이에요. 문장은 직접 써야 해요.') %}
+    {% if not saved_copy %}
+    <nav class="job-tabs no-print" style="margin:0">{% for j in jobs %}<a class="chip-link {{ 'on' if j.code == code }}" href="{{ url_for('analysis.manual', job=j.code) }}#situations">{{ j.name }}</a>{% endfor %}</nav>
+    {% endif %}
+  {% endcall %}
+  <div class="grid grid-2">
+    <div class="card"><h3>직무역량 문항</h3><p class="muted small-note" style="margin:0 0 8px">{{ m.job.name }}에 필요한 역량이 드러난 경험</p>
+      {% for x in st.competency %}{{ evi(x) }}{% if x.use %}<small class="muted">{{ m.job.name }}에서는: {{ x.use }}</small>{% endif %}
+      {% else %}<p class="need">{{ m.job.name }} 요구 역량이 확인된 경험이 아직 없어요.</p>{% endfor %}</div>
+    <div class="card"><h3>지원동기</h3><p class="muted small-note" style="margin:0 0 8px">내 강점이 {{ m.job.name }}에서 쓰이는 지점</p>
+      {% for f in st.motivation %}<p class="manual-job"><b>{{ f.name }}</b> <span class="badge">{{ f.source }} 기반</span>
+        {% for u in f.uses %}<small>{{ u.competency }} · {{ u.use }}</small>{% endfor %}</p>
+      {% else %}<p class="need">{{ m.job.name }}과 이어지는 강점 근거가 아직 없어요. 다른 직무를 골라 보거나 경험을 더 분석해 보세요.</p>{% endfor %}</div>
+    <div class="card"><h3>협업·갈등 해결 문항</h3>
+      {% for x in st.collaboration %}{{ evi(x) }}{% else %}<p class="need">협업·조율·설득이 드러난 경험이 아직 없어요.</p>{% endfor %}</div>
+    <div class="card"><h3>문제 해결·도전 문항</h3>
+      {% for x in st.problem %}{{ evi(x) }}{% else %}<p class="need">문제 해결 과정이 드러난 경험이 아직 없어요.</p>{% endfor %}</div>
+    <div class="card"><h3>면접 강점 사례</h3>
+      {% for x in st.interview %}<p class="manual-iv"><b>{{ x.strength }}</b> → {{ x.exp.title }}: “{{ x.quote }}”{% if x.exp.star < 4 %} <span class="badge warn">STAR {{ x.exp.star }}/4</span>{% endif %}</p>
+      {% else %}<p class="need">근거가 충분한 강점 사례가 아직 없어요.</p>{% endfor %}</div>
+    <div class="card"><h3>1분 자기소개 조합</h3>
+      {% if st.pitch %}<ol class="pitch">
+        {% for f in st.pitch %}<li><b>{{ f.name }}</b> — {{ f.evidence.exp.title }}{% if f.evidence.quote %}<small>“{{ f.evidence.quote }}”</small>{% endif %}</li>{% endfor %}
+        <li>마무리 — {{ m.job.name }}에서 {% if st.pitch[0].uses %}{{ st.pitch[0].uses[0].use }}{% else %}이 강점을 어떻게 쓸지{% endif %}</li>
+      </ol><small class="muted">대표 강점 1~2개와 근거 경험, 직무에서의 쓰임 순서로 말하면 돼요.</small>
+      {% else %}<p class="need">근거가 있는 강점이 아직 없어 조합을 만들지 못했어요.</p>{% endif %}</div>
+  </div>
+</section>
+{% endif %}
+
+{# ── 저장본 ── #}
+<section class="block reveal no-print" id="history">
+  {{ block_head('03', '저장한 설명서', '저장한 시점의 내용을 그대로 다시 열어 볼 수 있어요.') }}
+  {% if history %}
+  <div class="card"><ul class="upload-list">{% for h in history %}
+    <li><div style="flex:1 1 240px"><a href="{{ url_for('analysis.manual_saved', manual_id=h.id) }}"><b>{{ h.name }}</b></a>
+        {% if saved_copy and saved_copy.id == h.id %} <span class="badge ai">보는 중</span>{% endif %}
+        <div class="muted" style="font-size:.78rem">{{ h.created_at|localtime }} · 강점 {{ h.data.strengths|length }}개</div></div>
+      <form method="post" action="{{ url_for('analysis.manual_delete', manual_id=h.id) }}" class="inline" onsubmit="return confirm('이 저장본을 지울까요?')">
+        {{ csrf() }}<button class="btn ghost sm" type="submit">지우기</button></form></li>
+  {% endfor %}</ul></div>
+  {% else %}<div class="card"><p class="muted" style="margin:0">아직 저장한 설명서가 없어요.</p></div>{% endif %}
+</section>
+{% endblock %}
