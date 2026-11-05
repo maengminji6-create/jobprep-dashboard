@@ -7,3 +7,6 @@ instance/
 *.db
 .pytest_cache/
 .DS_Store
+# Vercel 빌드가 만드는 정적 파일 복사본
+public/
+.vercel/

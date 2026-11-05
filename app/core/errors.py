@@ -14,7 +14,10 @@ def register_error_handlers(app):
 
     @app.errorhandler(413)
     def too_large(e):
-        return render_template("errors/error.html", code=413, message="파일이 너무 큽니다."), 413
+        from flask import current_app
+        mb = current_app.config["MAX_CONTENT_LENGTH"] // 1048576
+        return render_template("errors/error.html", code=413,
+                               message=f"파일이 너무 커요. 한 번에 {mb}MB까지 올릴 수 있어요. 파일을 나누거나 줄여서 다시 올려 주세요."), 413
 
     @app.errorhandler(500)
     def server_error(e):

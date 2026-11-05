@@ -98,19 +98,25 @@ flask db migrate -m "설명"  # 모델을 바꾼 뒤 마이그레이션 파일 �
 flask db upgrade           # DB에 적용
 ```
 
-## 5. 배포 (SQLite → PostgreSQL)
+## 5. 배포 (Vercel + PostgreSQL)
 
-코드는 그대로 두고 환경변수만 바꿉니다.
+코드는 그대로 두고 환경변수만 바꿉니다. 설정 파일: `vercel.json`(빌드 명령·함수 설정), `.python-version`(3.12), `scripts/vercel_build.py`.
 
-1. GitHub에 올립니다(`.env`, `instance/`는 `.gitignore`로 제외됨).
-2. Render 대시보드에서 **New → Blueprint**로 이 저장소를 연결하면 `render.yaml`대로 웹 서비스 + PostgreSQL이 만들어집니다.
-3. `SECRET_KEY`는 자동 생성되고 `DATABASE_URL`은 자동 연결됩니다. `OPENAI_API_KEY`는 Render 대시보드의 Environment에 직접 넣으세요.
-   배포 링크로 들어온 사람은 각자 자기 공간만 써요. 단, AI 코멘트는 내 `OPENAI_API_KEY`로 호출되니 사용량을 확인하세요.
-   `SECRET_KEY`가 바뀌면 모든 방문자의 쿠키가 무효가 되니(기록 열쇠로는 다시 열 수 있음) 바꾸지 마세요.
-4. 배포 시 `flask db upgrade`가 먼저 실행되어 테이블이 생깁니다.
+1. GitHub에 올립니다(`.env`, `instance/`, `public/`은 `.gitignore`로 제외됨).
+2. Vercel 대시보드 **Add New → Project**에서 이 저장소를 고르고 Deploy. Flask(`wsgi.py`의 `app`)를 자동으로 찾아요.
+3. 프로젝트 **Storage → Neon(Postgres)** 을 연결하면 `DATABASE_URL`이 자동으로 들어가요(파일 DB인 SQLite는 Vercel에서 쓸 수 없음).
+4. **Settings → Environment Variables**(Production)에 넣기:
+   - `APP_ENV` = `prod`
+   - `SECRET_KEY` = 긴 임의 문자열(`python -c "import secrets; print(secrets.token_hex(32))"`) — **한 번 정하면 바꾸지 마세요.** 바뀌면 모든 방문자의 쿠키가 무효가 돼요(기록 열쇠로는 다시 열 수 있음).
+   - `OPENAI_API_KEY`(선택), `AI_MODEL`(선택)
+   - `OWNER_EMAIL`은 넣지 마세요(배포에서는 무시돼요). `MAX_UPLOAD_MB`는 비우면 4MB — Vercel은 4.5MB를 넘는 요청을 받지 않아요.
+5. 환경변수를 넣은 뒤 **Redeploy**. 운영 배포 빌드에서 `flask db upgrade`가 실행돼 테이블이 생겨요(미리보기 배포는 DB를 건드리지 않음). 마이그레이션이 실패하면 빌드가 멈춰 깨진 앱이 배포되지 않아요.
 
-무료 웹 서비스는 쉬는 동안 잠들 수 있지만 데이터는 PostgreSQL에 있어 사라지지 않습니다.
-무료 DB 플랜의 보관 기간·용량 제한은 플랫폼 정책을 확인하세요. Docker로 다른 곳에 올리려면 `Dockerfile`을 쓰면 됩니다.
+정적 파일은 빌드할 때 `public/static`으로 복사돼 CDN에서 나가요. 함수 최대 실행 시간은 300초(AI 이미지 읽기 포함).
+배포 링크로 들어온 사람은 각자 자기 공간만 써요. AI 기능은 내 `OPENAI_API_KEY`로 호출되니 사용량을 확인하세요.
+로컬 기록을 옮기려면 로컬에서 '저장·불러오기 → 파일로 내려받기' 후 배포 사이트에서 올리세요(경험·자격증·강점·자소서).
+
+Render(`render.yaml`·`Procfile`)나 Docker(`Dockerfile`)로도 그대로 배포할 수 있어요.
 
 ## 6. 폴더 구조
 

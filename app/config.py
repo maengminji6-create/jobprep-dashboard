@@ -20,7 +20,8 @@ class BaseConfig:
     SECRET_KEY = os.environ.get("SECRET_KEY") or "dev-only-change-me"
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     SQLALCHEMY_ENGINE_OPTIONS = {"pool_pre_ping": True}
-    MAX_CONTENT_LENGTH = int(os.environ.get("MAX_UPLOAD_MB", 10)) * 1024 * 1024
+    # Vercel 함수는 요청 본문이 4.5MB를 넘으면 앱에 닿기 전에 끊으므로 Vercel에서는 기본 4MB
+    MAX_CONTENT_LENGTH = int(os.environ.get("MAX_UPLOAD_MB") or (4 if os.environ.get("VERCEL") else 10)) * 1024 * 1024
 
     # 로그인 없이 브라우저마다 개인 공간: 이 쿠키로 기억(접속할 때마다 기한 연장, 브라우저 최대치 400일)
     REMEMBER_COOKIE_DURATION = timedelta(days=400)
@@ -49,6 +50,9 @@ class TestConfig(BaseConfig):
 
 class ProdConfig(BaseConfig):
     SQLALCHEMY_DATABASE_URI = _db_url("")
+    if os.environ.get("VERCEL"):  # 서버리스: 쉬는 동안 끊길 수 있는 연결을 붙잡아 두지 않고 요청마다 새로 맺음
+        from sqlalchemy.pool import NullPool
+        SQLALCHEMY_ENGINE_OPTIONS = {"pool_pre_ping": True, "poolclass": NullPool}
     SESSION_COOKIE_SECURE = True
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = "Lax"
