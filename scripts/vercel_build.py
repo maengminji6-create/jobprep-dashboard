@@ -1,6 +1,7 @@
 """Vercel 빌드 단계(vercel.json 의 buildCommand).
 
 1) app/static → public/static 복사: Vercel CDN이 /static/... 을 바로 내려 줌(주소는 url_for('static') 그대로)
+   (CDN이 못 내려 줘도 함수 묶음에 app/static 이 남아 있어 Flask 가 대신 내려 줌)
 2) 운영 배포(VERCEL_ENV=production)일 때만 DB 마이그레이션(flask db upgrade).
    미리보기 배포는 운영 DB를 바꾸지 않도록 건너뜀. 마이그레이션이 실패하면 빌드를 멈춰 깨진 앱이 배포되지 않게 함.
 """
