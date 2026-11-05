@@ -10,8 +10,8 @@ from ..extensions import db
 from ..integrations import ai_client
 from . import bp
 from .models import StrengthProfile
-from .services import (dump, experiences_hash, latest_profile, link_strengths, matrix, parse_strengths,
-                       profile_history)
+from .services import (dump, experiences_hash, latest_profile, link_strengths, matrix, parse_manual,
+                       parse_strengths, profile_history)
 
 ALLOWED = {"pdf", "docx", "txt", "md"}
 
@@ -68,17 +68,36 @@ def upload():
         flash("결과지에서 글자를 거의 읽지 못했어요. 스캔 이미지 PDF라면 결과 내용을 복사해 붙여넣어 주세요.", "error")
         return redirect(url_for("strengths.index"))
     parsed = parse_strengths(text)
-    # 새 결과지를 '사용 중'으로, 이전 결과지는 저장본으로 남겨 두고 언제든 다시 불러올 수 있게
-    for old in owned(StrengthProfile).all():
-        old.is_active = False
-    create_owned(StrengthProfile, filename=filename, extracted_text=text[:200000], parsed_json=dump(parsed),
-                 is_active=True)
-    db.session.commit()
+    _save_profile(filename, text, parsed)
     names = ", ".join(s["name"] for s in parsed["strengths"][:5])
     if parsed["strengths"]:
         flash(f"강점 {len(parsed['strengths'])}개를 찾았어요: {names}. 내 경험과 연결해 보여 드릴게요.", "success")
     else:
         flash("결과지는 저장했지만 강점 이름을 찾지 못했어요. AI 분석을 쓰거나 결과지 형식을 확인해 주세요.", "info")
+    return redirect(url_for("strengths.index"))
+
+
+def _save_profile(filename: str, text: str, parsed: dict) -> None:
+    """새 결과를 '사용 중'으로, 이전 결과지는 저장본으로 남겨 두고 언제든 다시 불러올 수 있게."""
+    for old in owned(StrengthProfile).all():
+        old.is_active = False
+    create_owned(StrengthProfile, filename=filename, extracted_text=text[:200000], parsed_json=dump(parsed),
+                 is_active=True)
+    db.session.commit()
+
+
+@bp.route("/manual", methods=["POST"])
+@login_required
+def manual():
+    """결과지 없이 강점을 직접 입력('강점: 설명' 한 줄에 하나, 또는 쉼표로 이름만)."""
+    text = (request.form.get("manual") or "").strip()
+    parsed = parse_manual(text)
+    if not parsed["strengths"]:
+        flash("강점을 한 줄에 하나씩 적어 주세요. 예: '신중함: 잘못될 일을 미리 살펴요'", "error")
+        return redirect(url_for("strengths.index"))
+    _save_profile("직접 입력한 강점", text, parsed)
+    flash(f"강점 {len(parsed['strengths'])}개를 저장했어요: {', '.join(s['name'] for s in parsed['strengths'][:5])}. "
+          "내 경험과 연결해 보여 드릴게요.", "success")
     return redirect(url_for("strengths.index"))
 
 

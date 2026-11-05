@@ -139,8 +139,39 @@ def _clues(name: str) -> list[str]:
     return [name] + ([stem] if len(stem) >= 2 else [])
 
 
+# 강점 → 그 강점을 살리기 좋은 직무(core/trade_roles 코드). 없는 강점은 연결된 경험의 적합 직무로 대신함
+STRENGTH_ROLES = {
+    "신중함": ["compliance", "customs", "trade_admin"], "효과성": ["scm", "trade_admin", "biz_support"],
+    "주도": ["overseas_sales", "biz_dev"], "계획성": ["scm", "forwarding", "trade_admin"],
+    "조화력": ["sales_support", "hr", "scm"], "책임감": ["trade_admin", "forwarding"], "성실": ["trade_admin", "sales_support"],
+    "소통": ["overseas_sales", "overseas_marketing", "sales_support"], "공감": ["hr", "sales_support"],
+    "분석력": ["overseas_marketing", "scm", "trade_finance"], "실행력": ["overseas_sales", "biz_dev"],
+    "추진력": ["biz_dev", "overseas_sales"], "리더십": ["biz_dev", "hr"], "창의성": ["overseas_marketing", "biz_dev"],
+    "적응력": ["overseas_sales", "biz_dev"], "끈기": ["overseas_sales", "sourcing"], "협업": ["scm", "sales_support"],
+    "학습": ["customs", "fta_origin"], "정리력": ["trade_admin", "biz_support"], "고객지향": ["overseas_sales", "sales_support"],
+    "정확성": ["customs", "trade_finance", "fta_origin"], "긍정성": ["sales_support", "hr"],
+}
+# 강점 → 그 강점을 보여 주기 좋은 자소서 문항 유형(experiences.analyzer.ESSAY_QUESTIONS 이름)
+STRENGTH_ESSAY = {
+    **{n: "도전·성장 경험" for n in ("주도", "추진력", "실행력", "끈기", "적응력", "창의성", "학습")},
+    **{n: "협업·갈등 해결" for n in ("조화력", "협업", "소통", "공감", "긍정성", "리더십")},
+}
+
+
+def _action(text: str, words: list[str]) -> str:
+    """단서 단어가 들어 있는 내 문장 = 강점을 증명하는 행동(글에 있는 그대로)."""
+    for ln in (text or "").splitlines():
+        for part in re.split(r"(?<=[.!?。])\s+", ln):
+            part = part.strip(" -•·")
+            if len(part) >= 6 and any(w in part for w in words):
+                return part[:180]
+    return ""
+
+
 def link_strengths(strengths: list[dict], exps: list) -> list[dict]:
-    """강점마다 연결되는 경험(최대 3개)과 근거 단어. 매트릭스용 점수도 함께 돌려줍니다."""
+    """강점마다 연결되는 경험(최대 3개) · 근거 단어 · 강점을 증명하는 내 문장 · 활용할 직무 · 자소서 소재.
+    연결된 경험이 없으면 matches 가 비고, 직무·소재도 만들지 않음(근거 없는 추천 방지). 매트릭스용 점수도 돌려줍니다."""
+    from ..core.trade_roles import ROLE_BY_CODE
     out = []
     for s in strengths:
         clues = _clues(s["name"])
@@ -148,17 +179,42 @@ def link_strengths(strengths: list[dict], exps: list) -> list[dict]:
         for e in exps:
             text = e.full_text
             words = [w for w in clues if w in text]
-            score = len(words) + (2 if s["name"] in (e.keywords or "") + (e.strengths or "") else 0)
+            score = len(words) + (2 if s["name"] in (e.keywords or "") + (e.strengths or "") + (e.competencies or "") else 0)
             if score:
-                matches.append({"id": e.id, "title": e.title, "category": e.category, "words": words[:4], "score": score})
+                matches.append({"id": e.id, "title": e.title, "category": e.category, "words": words[:4], "score": score,
+                                "action": _action(text, words or [s["name"]])})
         matches.sort(key=lambda m: m["score"], reverse=True)
-        tip = ""
+        tip, roles, essay = "", [], None
         if matches:
             m = matches[0]
             tip = (f"'{m['title']}'에서 {', '.join(m['words'][:2]) or s['name']} 같은 행동이 '{s['name']}' 강점을 보여 줘요. "
                    f"자소서에서는 강점 → 그 경험에서 한 구체적 행동 → 결과 순서로 쓰세요.")
-        out.append({**s, "matches": matches[:3], "all_scores": {m["id"]: m["score"] for m in matches}, "tip": tip})
+            codes = STRENGTH_ROLES.get(s["name"])
+            if not codes:  # 사전에 없는 강점: 연결된 경험이 잘 맞는 직무
+                from ..experiences.analyzer import analyze
+                by_id = {e.id: e for e in exps}
+                codes = [c for c, v in analyze(by_id[m["id"]])["top_roles"] if v >= 30][:2]
+            roles = [ROLE_BY_CODE[c]["name"] for c in codes if c in ROLE_BY_CODE]
+            essay = {"question": STRENGTH_ESSAY.get(s["name"], "직무역량·전문성"), "title": m["title"], "action": m["action"]}
+        out.append({**s, "matches": matches[:3], "all_scores": {m["id"]: m["score"] for m in matches}, "tip": tip,
+                    "roles": roles, "essay": essay, "clues": clues[:5]})
     return out
+
+
+def parse_manual(text: str) -> dict:
+    """직접 입력: 한 줄에 하나('신중함: 잘못될 일을 미리 살펴요' · '신중함 - …'), 또는 쉼표로 이름만."""
+    items = []
+    lines = [ln for ln in (text or "").splitlines() if ln.strip()]
+    if len(lines) == 1 and "," in lines[0] and not re.search(r"[:：\-–—]", lines[0]):
+        lines = lines[0].split(",")
+    for ln in lines:
+        m = re.match(r"^\s*(?:\d+[.)]\s*)?([^:：\-–—]{1,20}?)\s*(?:[:：\-–—]\s*(.*))?$", ln.strip(" ·•-"))
+        if not m:
+            continue
+        name, desc = m.group(1).strip(), (m.group(2) or "").strip()
+        if name and name not in [i["name"] for i in items] and len(items) < 10:
+            items.append({"name": name[:20], "summary": desc[:120], "rank": len(items) + 1})
+    return {"strengths": items, "method": "manual", "area": "", "role": ""}
 
 
 def matrix(linked: list[dict], exps: list, limit: int = 8) -> dict:

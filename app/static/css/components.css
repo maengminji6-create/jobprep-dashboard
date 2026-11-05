@@ -464,3 +464,9 @@ dialog.drawer::backdrop { background: rgba(43, 44, 48, .2); backdrop-filter: blu
   .exp-side { position: static; }
 }
 @media (max-width: 640px) { .star-grid { grid-template-columns: 1fr; } }
+
+/* ── 강점 카드: 증명하는 행동 · 활용 직무 · 자소서 소재 · 연결 없음 ─────────── */
+.s-matches li a { color: var(--ink); }
+.s-action { display: block; margin: 4px 0 6px; font-size: .82rem; line-height: 1.6; color: var(--text); quotes: "“" "”"; }
+.s-essay { font-size: .84rem; margin: 0 0 4px; color: var(--text); }
+.s-none { margin: 4px 0 6px; }
