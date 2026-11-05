@@ -30,7 +30,7 @@ def test_certificate_card_shows_relevance_and_boosts_role(auth_client, user):
     _add(user, "바이어 응대 인턴", "해외 바이어 견적 대응과 수출 오더 관리")
     auth_client.post("/experiences/certificate", data={"cert_name": "국제무역사 1급", "cert_score": "합격"})
     manage = auth_client.get("/experiences/manage?role=overseas_sales").get_data(as_text=True)
-    assert "국제무역사 1급" in manage and "무역 실무 전반" in manage and 'style="--v:85"' in manage
+    assert "국제무역사 1급" in manage and "무역 실무 전반" in manage and "해외영업 관련 높음" in manage
 
 
 def test_excel_certificate_rows_become_certificates(auth_client, user):

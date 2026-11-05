@@ -127,7 +127,9 @@ def rule_comment(a: dict, role_code: str, role_name: str) -> dict:
         points.append(f"직접 적은 키워드({', '.join(a['keywords'][:3])})를 행동 사례로 풀어 쓰세요.")
     if not points:
         points.append("맡은 역할과 그 결과를 상황→행동→결과 순서로 정리해 보세요.")
-    return {"summary": f"{role_name} 적합도 {fit['score']}점 경험이에요.",
+    summary = (f"{role_name}와 이어지는 단어({', '.join(fit['hits'][:3])})가 들어 있는 경험이에요." if fit["hits"]
+               else f"아직 {role_name}와 바로 이어지는 단어는 없는 경험이에요.")
+    return {"summary": summary,
             "appeal_points": points[:3], "essay_question": essay_question_for(a), "opening_sentence": "",
             "improve": "결과를 숫자(%, 건수, 기간)로 적으면 더 설득력 있어요." if not a["numbers"]
             else "본인이 직접 한 행동과 팀이 한 일을 구분해 적어 보세요."}

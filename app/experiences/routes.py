@@ -44,8 +44,10 @@ def _cert_views(certs, role: str) -> list[dict]:
     for c in certs:
         ev = c.evaluation
         top = sorted(ev["roles"].items(), key=lambda kv: kv[1], reverse=True)[:3]
-        views.append({"c": c, "rel": ev["roles"].get(role, 0), "reason": ev["reason"], "known": ev["known"],
-                      "top": [(ROLE_BY_CODE[k]["name"], v) for k, v in top if v > 0]})
+        rel = ev["roles"].get(role, 0)
+        views.append({"c": c, "rel": rel, "level": "높음" if rel >= 80 else ("보통" if rel >= 50 else "낮음"),
+                      "reason": ev["reason"], "known": ev["known"],
+                      "top": [ROLE_BY_CODE[k]["name"] for k, v in top if v >= 50]})
     return sorted(views, key=lambda v: v["rel"], reverse=True)
 
 

@@ -74,10 +74,49 @@ def test_draft_without_key_and_with_fake_ai(app, auth_client, user, monkeypatch)
     from app.integrations import ai_client
     app.config["OPENAI_API_KEY"] = "test-key"
     assert auth_client.post("/applications/draft", data={"q": "직무 역량", "exp_ids": ""}).status_code == 400
-    monkeypatch.setattr(ai_client, "draft_answer", lambda q, limit, exps, posting, role: {
+    monkeypatch.setattr(ai_client, "draft_answer", lambda q, limit, exps, posting, role, evidence=None: {
         "answer": "저는 현지 바이어 메일을 응대했습니다. 그 결과 응답률이 80% 올랐습니다.", "missing": ["결과"]})
     d = auth_client.post("/applications/draft", data={"q": "직무 역량", "exp_ids": str(e.id)}).get_json()
     assert "바이어 메일" in d["answer"] and "80%" not in d["answer"] and d["notes"] and d["missing"] == ["결과"]
+    assert d["basis"] == [] and d["role"] == "해외영업"  # 분석 전: 경험 글만 근거
+
+
+def test_draft_uses_verified_analysis_and_linked_strengths(app, auth_client, user, monkeypatch):
+    """AI 분석에서 확인된 역량·진단 강점 연결을 근거로 함께 넘김. 내용이 바뀐 분석·해제·약한 연결은 넘기지 않음."""
+    import json
+
+    from app.analysis.models import ExperienceAnalysis, StrengthLink
+    from app.integrations import ai_client
+    from app.strengths.models import StrengthProfile
+    app.config["OPENAI_API_KEY"] = "test-key"
+    e = _exp(user)
+    db.session.add(ExperienceAnalysis(user_id=user.id, experience_id=e.id, content_hash=e.content_hash, data_json=json.dumps(
+        {"competencies": [{"name": "글로벌 커뮤니케이션", "level": "보통",
+                           "quotes": [{"quote": "현지 바이어 메일 응대", "field": "역할", "reason": ""}]}]}, ensure_ascii=False)))
+    p = StrengthProfile(user_id=user.id, filename="강점", parsed_json=json.dumps({"strengths": [{"name": "소통"}, {"name": "주도"}]},
+                                                                                 ensure_ascii=False))
+    db.session.add(p)
+    db.session.commit()
+    db.session.add_all([StrengthLink(user_id=user.id, profile_id=p.id, strength_name="소통", experience_id=e.id,
+                                     quote="현지 바이어 메일 응대", evidence="충분"),
+                        StrengthLink(user_id=user.id, profile_id=p.id, strength_name="주도", experience_id=e.id,
+                                     quote="현지 바이어", evidence="약함")])
+    db.session.commit()
+    got = {}
+
+    def fake(q, limit, exps, posting, role, evidence=None):
+        got.update(role=role, evidence=evidence)
+        return {"answer": "저는 현지 바이어 메일을 응대했습니다.", "missing": []}
+    monkeypatch.setattr(ai_client, "draft_answer", fake)
+    auth_client.get("/jobfit/?job=trade_admin")  # 직무 연결에서 고른 직무가 기준
+    d = auth_client.post("/applications/draft", data={"q": "직무 역량", "exp_ids": str(e.id)}).get_json()
+    assert got["role"] == "무역사무" and d["basis"] == ["글로벌 커뮤니케이션", "소통"]
+    assert got["evidence"] == [{"id": e.id, "역량": [{"이름": "글로벌 커뮤니케이션", "근거 문장": "현지 바이어 메일 응대"}],
+                                "강점": [{"이름": "소통", "근거 문장": "현지 바이어 메일 응대"}]}]  # 약함(주도)은 뺌
+    e.content = "내용을 고침"  # 분석 뒤에 경험이 바뀌면 그 분석은 근거로 쓰지 않음
+    db.session.commit()
+    auth_client.post("/applications/draft", data={"q": "직무 역량", "exp_ids": str(e.id)})
+    assert got["evidence"][0]["역량"] == []
 
 
 def test_versions_and_restore(auth_client, user):

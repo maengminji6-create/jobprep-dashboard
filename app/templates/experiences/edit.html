@@ -70,7 +70,7 @@
         {% for c in suggestions if c.name not in ai_comp|map(attribute='name')|list %}<button type="button" class="comp-chip" data-add-tag="{{ c.name }}" title="{{ c.evidence }}">＋ {{ c.name }}<small>{{ c.words|join(' · ') }}</small></button>{% endfor %}
       </div>
       {% endif %}
-      <div class="field" style="margin-top:14px"><label>관련 직무 {% if role_hint %}<span class="muted">· ★ 이 경험과 잘 맞는 직무</span>{% endif %}</label>
+      <div class="field" style="margin-top:14px"><label>관련 직무 {% if role_hint %}<span class="muted">· ★ 경험 글의 단어로 추정한 직무(참고용)</span>{% endif %}</label>
         <div class="role-checks">
           {% for r in roles %}
           <label class="role-check"><input type="checkbox" name="related_roles" value="{{ r.code }}" {{ 'checked' if r.code in exp.related_role_list }}>

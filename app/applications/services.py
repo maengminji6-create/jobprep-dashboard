@@ -155,3 +155,22 @@ def _mark_saved(pa) -> None:
     if not pa.is_saved:
         pa.is_saved = True
         pa.saved_at = datetime.now(timezone.utc)
+
+
+def draft_evidence(exps: list) -> list[dict]:
+    """AI 초안에 함께 넘길 근거: AI 분석에서 원문 인용이 확인된 역량, 해제하지 않은 진단 강점 연결(근거 약함 제외).
+    [{"id", "역량": [{"이름", "근거 문장"}], "강점": [{"이름", "근거 문장"}]}] — 근거가 없는 경험은 빠짐."""
+    from ..analysis.services import links_of, saved_analyses
+    from ..strengths.services import latest_profile
+    saved = saved_analyses()
+    profile = latest_profile()
+    links = [lk for lk in (links_of(profile) if profile else []) if not lk.removed and lk.evidence != "약함"]
+    out = []
+    for e in exps:
+        a = saved.get(e.id)
+        comps = [{"이름": c["name"], "근거 문장": c["quotes"][0]["quote"]}
+                 for c in (a.data.get("competencies", []) if a and a.content_hash == e.content_hash else [])]
+        strengths = [{"이름": lk.strength_name, "근거 문장": lk.quote} for lk in links if lk.experience_id == e.id and lk.quote]
+        if comps or strengths:
+            out.append({"id": e.id, "역량": comps, "강점": strengths})
+    return out

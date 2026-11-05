@@ -3,7 +3,7 @@
 ## 프로젝트
 무역업 취준생용 경험정리 분석 도구(CAIRN). 앱 팩토리 + 블루프린트 구조.
 메뉴는 홈(`experiences.index`), 경험 관리(`experiences.manage`), AI 분석(`analysis.index`), 직무 연결(`jobfit.index`, 기준표 `core/job_competencies.py`), 자소서 보관함(`applications.index`)이고, 이력 PDF(`experiences.report`)는 홈에서 연다. 강점 진단 결과 등록(`strengths.index`)은 AI 분석에서 들어간다. 홈 뉴스 탭은 의도적으로 지웠다.
-홈은 `experiences/dashboard.py`, 나의 강점 사용 설명서는 `analysis/manual.py`(저장본 `StrengthManual`)가 저장된 데이터만 엮어 만든다. 직무 적합도 같은 0–100 점수는 화면에 쓰지 않는다(키워드 점수 `experiences/analyzer.py`는 자소서 코멘트 기준 직무 추천에만 남음).
+홈은 `experiences/dashboard.py`, 나의 강점 사용 설명서는 `analysis/manual.py`(저장본 `StrengthManual`)가 저장된 데이터만 엮어 만든다. 직무 적합도 같은 0–100 점수는 화면에 쓰지 않는다(키워드 점수 `experiences/analyzer.py`는 자소서 코멘트 기준 직무 추천과 경험 수정 화면의 ★ 참고 표시에만 남음). 자소서 AI 초안은 `applications/services.py`의 `draft_evidence()`로 분석·강점 근거를 함께 넘긴다.
 AI 분석 결과(`ExperienceAnalysis`, `StrengthLink`)는 경험 원문 인용이 확인된 항목만 저장한다(`analysis/services.py`의 `locate()`). 역량 이름은 `core/competencies.py` 기준표 하나만 쓴다. 진단 순위와 경험 근거는 하나의 점수로 합치지 않는다.
 공고 매칭(`experiences.posting*`)·면접 준비(`interview.*`)·취업 일정(`schedule.*`)은 리뉴얼 동안 쉬는 기능: `LEGACY_FEATURES=1`일 때만 메뉴·화면이 열리고, 꺼져 있으면 404(`app/__init__.py`의 `is_legacy_endpoint`). 코드·데이터는 지우지 않는다. 테스트 설정은 켜 둔 상태다.
 로컬은 SQLite(`instance/dev.db`), 배포는 PostgreSQL(`DATABASE_URL`). DB 종류에 의존하는 코드는 쓰지 않는다.

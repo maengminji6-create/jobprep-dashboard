@@ -394,16 +394,21 @@ ANSWER_PROMPT = """당신은 지원자가 직접 겪은 경험만으로 자기�
 - 문항이 묻는 것에 답하는 구조로: 첫 문장에 핵심 → 상황·과제 → 내가 한 행동 → 결과·배운 점 → 지원 직무와 연결.
 - 글자 수 제한이 있으면 그 안에서 씁니다(공백 포함). 과장된 수식어(최고의, 완벽한 등)는 쓰지 않습니다.
 - 공고 요약이 있으면 공고가 원하는 역량과 연결하되, 경험에 없는 역량을 있다고 쓰지 않습니다.
+- '확인된 역량·강점'이 있으면 그 이름으로 답변의 핵심을 잡되, 근거는 거기 적힌 근거 문장과 경험 글에서만 가져옵니다.
 - 한국어, 지원자 1인칭(저는)."""
 
 
-def draft_answer(question: str, limit: str, exps: list, posting_text: str, role_name: str) -> dict:
-    """문항 + 고른 경험(최대 3개) → {"answer": 초안, "missing": 사용자가 더 채울 것}. 화면에서 고친 뒤 저장."""
+def draft_answer(question: str, limit: str, exps: list, posting_text: str, role_name: str,
+                 evidence: list | None = None) -> dict:
+    """문항 + 고른 경험(최대 3개) → {"answer": 초안, "missing": 사용자가 더 채울 것}. 화면에서 고친 뒤 저장.
+    evidence: AI 분석·강점 연결에서 원문 인용이 확인된 역량·강점(applications.services.draft_evidence)."""
     blocks = [_experience_block(e, role_name, []) for e in exps[:3]]
-    prompt = PARA.join([
-        f"문항: {question}", f"글자 수 제한: {limit or '없음'}", f"지원 직무: {role_name}",
-        f"공고 요약(참고): {(posting_text or '')[:2500]}",
-        "경험(이 내용만 근거로):", json.dumps(blocks, ensure_ascii=False, indent=1)])
+    parts = [f"문항: {question}", f"글자 수 제한: {limit or '없음'}", f"지원 직무: {role_name}",
+             f"공고 요약(참고): {(posting_text or '')[:2500]}",
+             "경험(이 내용만 근거로):", json.dumps(blocks, ensure_ascii=False, indent=1)]
+    if evidence:
+        parts += ["확인된 역량·강점(경험 id별, 근거 문장은 경험 글에서 인용한 것):", json.dumps(evidence, ensure_ascii=False, indent=1)]
+    prompt = PARA.join(parts)
     data = _call(ANSWER_PROMPT, prompt, ANSWER_SCHEMA, "essay_draft")
     data["missing"] = [m for m in data.get("missing", []) if m][:5]
     return data
@@ -509,7 +514,9 @@ ANALYSIS_PROMPT = """당신은 취업 준비생의 경험 기록을 읽고 그 �
 - 글에 근거가 없으면 비워 둡니다: actions·results·competencies 는 빈 배열, problem_solving 은 text·quote 모두 "".
 - needs_info: 추측하지 말고, 이 경험을 설득력 있게 쓰려면 무엇을 더 적어야 하는지 짧게(최대 4개).
   예: "결과 정보 필요: 행동 뒤에 무엇이 달라졌는지", "본인 역할 구분 필요: 팀이 한 일과 내가 한 일".
-- competencies: 아래 목록의 이름만 쓰고, 글에 근거가 있는 것만 최대 5개. reason 은 그 문장이 왜 그 역량인지 한 문장.
+- competencies: 아래 목록의 이름만 쓰고, 글에 근거가 있는 것만(역량 최대 5가지). reason 은 그 문장이 왜 그 역량인지 한 문장.
+  같은 역량을 보여 주는 서로 다른 문장이 글에 더 있으면 같은 name 으로 한 항목 더 넣습니다(역량마다 최대 2개).
+  근거 문장이 하나뿐이면 억지로 늘리지 않습니다.
 - 모두 한국어로, 짧게 씁니다.
 
 각 경험마다(id 는 입력 그대로):

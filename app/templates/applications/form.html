@@ -142,7 +142,10 @@
         if (d.error) { panel.innerHTML = '<p class="muted">' + esc(d.error) + '</p>'; return; }
         putText(item, d.answer);
         var notes = (d.notes || []).concat((d.missing || []).map(function (m) { return "더 채우면 좋은 것: " + m; }));
+        var basis = (d.basis || []).length ? "AI 분석에서 확인된 " + d.basis.join(", ") + "을(를) 근거로 썼어요."
+                                           : "아직 AI 분석 근거가 없어 고른 경험 글만 썼어요.";
         panel.innerHTML = '<p class="qa-type"><b>✦ AI 초안을 넣었어요.</b> 내 경험에 있는 내용인지 꼭 확인하고 고쳐 주세요.</p>' +
+          '<p class="muted" style="font-size:.78rem;margin:4px 0">' + esc(d.role + " 기준 · " + basis) + '</p>' +
           (notes.length ? '<ul class="qa-notes">' + notes.map(function (n) { return "<li>" + esc(n) + "</li>"; }).join("") + "</ul>" : "");
       }).catch(function () { panel.innerHTML = '<p class="muted">AI 초안을 받지 못했어요. 잠시 뒤 다시 시도해 주세요.</p>'; })
       .finally(function () { btn.disabled = false; btn.textContent = "✦ AI 초안"; });

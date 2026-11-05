@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "components/macros.html" import csrf, meter, delete_button, empty, comment_box, ring %}
+{% from "components/macros.html" import csrf, delete_button, empty, comment_box %}
 {% block title %}경험 관리{% endblock %}
 
 {% macro block_head(num, title, desc) %}
@@ -72,7 +72,7 @@
 
 {# ── 02 자격증·어학 ── #}
 <section class="block reveal" id="certs">
-  {% call block_head('02', '자격증·어학', '경험과 따로 관리해요. 자격증마다 ' ~ role_name ~ ' 관련도를 보여 주고, 관련 직무 적합도에 가산점으로 반영돼요.') %}
+  {% call block_head('02', '자격증·어학', '경험과 따로 관리해요. 자격증마다 ' ~ role_name ~ '와 얼마나 관련 있는지 자격증 표 기준으로 보여 드려요.') %}
     <a class="btn secondary sm" href="#tab-cert">＋ 자격증 추가</a>
   {% endcall %}
   {% if certs %}
@@ -82,10 +82,10 @@
       <div class="cert-top">
         <div><h3>{{ c.name }}</h3>
           <p class="muted" style="font-size:.8rem;margin:2px 0 0">{{ [c.score, c.acquired, c.issuer]|select|join(' · ') or '점수·취득일 미입력' }}</p></div>
-        {{ ring(v.rel, '관련도', 'soft' if v.rel < 50 else '') }}
+        <span class="badge {{ {'높음': 'lv-strong', '보통': 'lv-mid', '낮음': ''}[v.level] }}" title="자격증 표 기준">{{ role_name }} 관련 {{ v.level }}</span>
       </div>
       <p class="cert-why">{{ v.reason }}{% if not v.known %} <span class="badge">추정</span>{% endif %}</p>
-      {% if v.top %}<div class="chips">{% for name, score in v.top %}<span class="chip {{ 'on' if loop.first }}">{{ name }} {{ score }}</span>{% endfor %}</div>{% endif %}
+      {% if v.top %}<p class="rec-label">관련이 큰 직무</p><div class="chips">{% for name in v.top %}<span class="chip {{ 'on' if loop.first }}">{{ name }}</span>{% endfor %}</div>{% endif %}
       <div class="exp-card-foot">
         <span style="margin-left:auto;white-space:nowrap"><a class="btn ghost sm" href="{{ url_for('experiences.edit_certificate', cert_id=c.id) }}">수정</a>{{ delete_button(url_for('experiences.delete_certificate', cert_id=c.id)) }}</span>
       </div>
@@ -93,7 +93,7 @@
     {% endfor %}
   </div>
   {% else %}
-  <div class="card">{{ empty('아직 자격증·어학이 없어요', '국제무역사, 무역영어, TOEIC·OPIc 등을 추가하면 관련 직무 적합도에 반영돼요.') }}</div>
+  <div class="card">{{ empty('아직 자격증·어학이 없어요', '국제무역사, 무역영어, TOEIC·OPIc 등을 추가하면 직무별 관련 정도를 보여 드려요.') }}</div>
   {% endif %}
 </section>
 
