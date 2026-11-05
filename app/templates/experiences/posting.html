@@ -93,12 +93,12 @@
       <p class="muted hint">열린 페이지의 본문 글과 본문 이미지를 읽어요. 로그인·앱 전용 공고는 열 수 없으니 이미지·PDF·텍스트로 넣어 주세요.</p>
     </div>
     <div class="mode-panel" data-mode="image">
-      <div class="field"><label for="pf-img">공고 캡처 이미지 <span class="muted">JPG·PNG · 최대 6장 · 고른 순서대로 읽어요</span></label>
+      <div class="field"><label for="pf-img">공고 캡처 이미지 <span class="muted">JPG·PNG · 최대 6장(합쳐 {{ config.MAX_CONTENT_LENGTH // 1048576 }}MB) · 고른 순서대로 읽어요</span></label>
         <input id="pf-img" type="file" name="images" accept=".png,.jpg,.jpeg,.webp" multiple></div>
       <p class="muted hint">이미지 속 글자는 AI(OpenAI 비전)로 읽어요{% if not config.OPENAI_API_KEY %} — 지금은 <code>OPENAI_API_KEY</code>가 없어 읽을 수 없어요{% endif %}.</p>
     </div>
     <div class="mode-panel" data-mode="pdf">
-      <div class="field"><label for="pf-pdf">공고 PDF <span class="muted">10MB까지 · 여러 쪽은 순서대로 합쳐요</span></label>
+      <div class="field"><label for="pf-pdf">공고 PDF <span class="muted">{{ config.MAX_CONTENT_LENGTH // 1048576 }}MB까지 · 여러 쪽은 순서대로 합쳐요</span></label>
         <input id="pf-pdf" type="file" name="pdf" accept=".pdf,application/pdf"></div>
       <p class="muted hint">글이 들어 있는 PDF는 바로 읽고, 스캔한 쪽은 이미지로 꺼내 AI로 읽어요.</p>
     </div>

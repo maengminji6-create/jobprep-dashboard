@@ -12,7 +12,7 @@
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&display=swap">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/components.css') }}">
-  <script>document.documentElement.classList.add("js");</script>
+  <script>document.documentElement.classList.add("js"); window.MAX_UPLOAD = {{ config.MAX_CONTENT_LENGTH }};</script>
   {% block head %}{% endblock %}
 </head>
 <body>

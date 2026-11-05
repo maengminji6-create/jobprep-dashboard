@@ -582,7 +582,11 @@ def _postings() -> dict:
 
 
 POSTING_MODES = ("url", "image", "pdf", "text")
-MAX_PDF_BYTES = 10 * 1024 * 1024
+
+
+def _upload_limit() -> int:
+    """한 번에 올릴 수 있는 크기(설정 MAX_UPLOAD_MB). 이미지 한 장은 8MB도 넘지 않게."""
+    return current_app.config["MAX_CONTENT_LENGTH"]
 
 
 def _json_field(name: str, kind):
@@ -638,22 +642,23 @@ def posting():
             ext = f.filename.rsplit(".", 1)[-1].lower() if f and "." in (f.filename or "") else ""
             if ext not in UPLOAD_EXT:
                 continue
-            data = f.read(8 * 1024 * 1024 + 1)
-            if len(data) > 8 * 1024 * 1024:
-                flash(f"'{f.filename}'은(는) 8MB가 넘어 빼고 읽었어요.", "info")
+            per_image = min(8 * 1024 * 1024, _upload_limit())
+            data = f.read(per_image + 1)
+            if len(data) > per_image:
+                flash(f"'{f.filename}'은(는) {per_image // 1048576}MB가 넘어 빼고 읽었어요.", "info")
                 continue
             images.append(data)
         if not images:
-            flash("JPG·PNG 공고 이미지를 골라 주세요(최대 6장, 장당 8MB).", "error")
+            flash(f"JPG·PNG 공고 이미지를 골라 주세요(최대 6장, 모두 합쳐 {_upload_limit() // 1048576}MB까지).", "error")
             return render_template("experiences/posting.html", analysis=None, form=request.form, mode=mode, **ctx)
     else:
         f = request.files.get("pdf")
         if not f or not (f.filename or "").lower().endswith(".pdf"):
             flash("PDF 파일을 골라 주세요.", "error")
             return render_template("experiences/posting.html", analysis=None, form=request.form, mode=mode, **ctx)
-        pdf = f.read(MAX_PDF_BYTES + 1)
-        if len(pdf) > MAX_PDF_BYTES:
-            flash("PDF는 10MB까지 올릴 수 있어요.", "error")
+        pdf = f.read(_upload_limit() + 1)
+        if len(pdf) > _upload_limit():
+            flash(f"PDF는 {_upload_limit() // 1048576}MB까지 올릴 수 있어요.", "error")
             return render_template("experiences/posting.html", analysis=None, form=request.form, mode=mode, **ctx)
 
     ex = extract(url=url, images=images, pdf=pdf)

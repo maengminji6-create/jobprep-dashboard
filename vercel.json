@@ -1,0 +1,10 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "python scripts/vercel_build.py",
+  "functions": {
+    "wsgi.py": {
+      "maxDuration": 300,
+      "excludeFiles": "{tests/**,samples/**,docs/**,migrations/**,instance/**,app/static/**,.venv/**}"
+    }
+  }
+}

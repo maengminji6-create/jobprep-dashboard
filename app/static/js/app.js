@@ -124,6 +124,21 @@
     Object.keys(byId).forEach(function (id) { var el = document.getElementById(id); if (el) spy.observe(el); });
   }
 
+  // 파일 업로드: 합친 크기가 상한(MAX_UPLOAD)을 넘으면 보내기 전에 알림
+  document.querySelectorAll('form[enctype="multipart/form-data"]').forEach(function (f) {
+    f.addEventListener("submit", function (e) {
+      var total = 0;
+      f.querySelectorAll('input[type=file]').forEach(function (i) {
+        if (i.closest("[hidden]") || (i.closest(".mode-panel") && getComputedStyle(i.closest(".mode-panel")).display === "none")) return;
+        Array.prototype.forEach.call(i.files || [], function (file) { total += file.size; });
+      });
+      if (window.MAX_UPLOAD && total > window.MAX_UPLOAD) {
+        e.preventDefault(); e.stopImmediatePropagation();
+        alert("파일이 너무 커요. 한 번에 " + Math.floor(window.MAX_UPLOAD / 1048576) + "MB까지 올릴 수 있어요. 파일을 나누거나 줄여서 올려 주세요.");
+      }
+    }, true);
+  });
+
   // 오래 걸리는 제출 버튼(data-busy): 누르면 잠그고 진행 문구 표시
   document.querySelectorAll("button[data-busy]").forEach(function (b) {
     if (b.form) b.form.addEventListener("submit", function () { b.disabled = true; b.textContent = b.dataset.busy; });

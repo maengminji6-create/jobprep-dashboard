@@ -45,7 +45,10 @@ def create_app(config_name: str | None = None) -> Flask:
     if config_name == "prod" and not app.config["SQLALCHEMY_DATABASE_URI"]:
         raise RuntimeError("배포 환경에는 DATABASE_URL 환경변수가 필요합니다.")
 
-    os.makedirs(INSTANCE_DIR, exist_ok=True)
+    try:
+        os.makedirs(INSTANCE_DIR, exist_ok=True)  # 로컬 SQLite용. 배포(읽기 전용 파일 시스템)에서는 쓰지 않음
+    except OSError:
+        pass
 
     db.init_app(app)
     migrate.init_app(app, db, render_as_batch=True)  # SQLite에서도 ALTER 가능하게
