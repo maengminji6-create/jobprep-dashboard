@@ -3,7 +3,7 @@
   <div class="tabs" role="tablist">
     <button type="button" role="tab" data-tab="exp" aria-selected="true">경험 추가·업데이트</button>
     <button type="button" role="tab" data-tab="cert" aria-selected="false">자격증·어학</button>
-    <button type="button" role="tab" data-tab="file" aria-selected="false">파일 올리기</button>
+    <button type="button" role="tab" data-tab="file" aria-selected="false">파일 올리기 · PDF·엑셀</button>
     <button type="button" role="tab" data-tab="data" aria-selected="false">저장·불러오기{% if snapshots %} · {{ snapshots|length }}{% endif %}</button>
   </div>
 
@@ -52,9 +52,10 @@
 
   <form class="tab-panel" id="tab-file" role="tabpanel" method="post" action="{{ url_for('experiences.upload') }}" enctype="multipart/form-data" hidden>
     {{ csrf() }}
-    <div class="formats"><span>XLSX</span><span>XLS</span><span>CSV</span><span>DOCX</span><span>PDF</span><span>TXT</span></div>
-    <p class="muted" style="font-size:.86rem">엑셀은 한 행이 경험 하나예요. <code>기관명</code> <code>나의 역할</code> <code>key-word</code> <code>강약점</code> <code>느낀점</code> 같은 머리글을 자동으로 찾아요.
-      같은 이름의 경험은 새로 만들지 않고 업데이트해요. 파일은 직접 올렸을 때만 읽어요.</p>
+    <div class="formats"><span>PDF</span><span>XLSX</span><span>XLS</span><span>CSV</span><span>DOCX</span><span>TXT</span></div>
+    <p class="muted" style="font-size:.86rem"><b>엑셀</b>은 한 행이 경험 하나예요. <code>기관명</code> <code>나의 역할</code> <code>key-word</code> <code>강약점</code> <code>느낀점</code> 같은 머리글을 자동으로 찾아요.<br>
+      <b>PDF·Word</b>는 큰 글씨 제목이나 '경험 이름 다음 줄에 기간'이 있는 곳을 기준으로 경험을 나눠요. 스캔한 이미지 PDF는 글을 읽을 수 없어요.<br>
+      같은 이름의 경험은 새로 만들지 않고 업데이트해요. 파일은 직접 올렸을 때만 읽어요(최대 {{ config.MAX_CONTENT_LENGTH // 1048576 }}MB).</p>
     <div class="row">
       <div class="field" style="flex:1 1 320px"><input type="file" name="file" accept=".xlsx,.xlsm,.xls,.csv,.docx,.pdf,.txt,.md" required></div>
       <div class="field" style="flex:0 0 auto"><button class="btn" type="submit">업로드·분석</button></div>

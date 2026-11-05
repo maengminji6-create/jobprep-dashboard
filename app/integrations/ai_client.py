@@ -5,6 +5,7 @@
 - 여러 경험을 한 번의 요청으로 보내고, JSON 스키마(structured outputs)로 형식이 고정된 결과를 받습니다.
 """
 import json
+import re
 
 import openai
 from flask import current_app
@@ -364,4 +365,134 @@ def match_posting_ai(posting_text: str, exps: list, certs: list, strength_profil
     data = _call(POSTING_PROMPT, PARA.join(parts), POSTING_SCHEMA, "posting_match")
     valid = {e.id for e in exps}
     data["matches"] = [m for m in data.get("matches", []) if m.get("experience_id") in valid]
+    return data
+
+
+# ── 경험 STAR 구조화 초안 ─────────────────────────────────────────────
+
+STAR_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "star_situation": {"type": "string"}, "star_task": {"type": "string"},
+        "star_action": {"type": "string"}, "star_result": {"type": "string"},
+        "competencies": {
+            "type": "array",
+            "items": {"type": "object", "properties": {"name": {"type": "string"}, "evidence": {"type": "string"}},
+                      "required": ["name", "evidence"], "additionalProperties": False},
+        },
+        "questions": {"type": "array", "items": {"type": "string"}},
+    },
+    "required": ["star_situation", "star_task", "star_action", "star_result", "competencies", "questions"],
+    "additionalProperties": False,
+}
+
+STAR_PROMPT = """당신은 취업 준비생의 경험 글을 STAR(상황·과제·행동·결과)로 다시 정리해 주는 편집자입니다.
+
+원칙(가장 중요):
+- 지원자가 적은 내용만 씁니다. 적혀 있지 않은 사실·성과·숫자·기간·인원·기관명은 절대 만들지 않습니다.
+- 지원자의 문장을 옮기거나 짧게 다듬기만 합니다. 과장하거나 새 표현으로 성과를 부풀리지 않습니다.
+- 어느 칸에 넣을 내용이 글에 없으면 그 칸은 빈 문자열("")로 둡니다.
+- 비어 있거나 모호한 칸은 questions 에 '무엇을 더 적으면 되는지' 묻는 질문으로 적습니다(최대 4개).
+  결과에 수치가 없으면 "실제로 잰 값이 있다면" 적어 달라고 묻되, 숫자를 예로 지어내지 않습니다.
+- competencies: 글에 근거가 있는 핵심 역량 3~5개. evidence 에는 그 근거가 된 지원자의 문장을 그대로 인용합니다.
+- 모두 한국어로 씁니다."""
+
+
+def structure_experience(exp, role_name: str) -> dict:
+    """경험 1개 → STAR 초안 · 역량(근거 인용) · 추가로 물어볼 질문. 화면에서 확인한 뒤 저장합니다."""
+    block = _experience_block(exp, role_name, [])
+    prompt = PARA.join([f"지원 직무(참고): {role_name}", "경험:", json.dumps(block, ensure_ascii=False, indent=1)])
+    data = _call(STAR_PROMPT, prompt, STAR_SCHEMA, "experience_star")
+    data["competencies"] = [c for c in data.get("competencies", []) if c.get("name")][:5]
+    data["questions"] = [q for q in data.get("questions", []) if q][:4]
+    return data
+
+
+# ── 자소서 답변 초안(고른 경험만 근거) ─────────────────────────────────────
+
+ANSWER_SCHEMA = {
+    "type": "object",
+    "properties": {"answer": {"type": "string"}, "missing": {"type": "array", "items": {"type": "string"}}},
+    "required": ["answer", "missing"],
+    "additionalProperties": False,
+}
+
+ANSWER_PROMPT = """당신은 지원자가 직접 겪은 경험만으로 자기소개서 답변 초안을 쓰는 코치입니다.
+
+원칙(가장 중요):
+- 아래 '경험'에 적힌 사실만 씁니다. 적혀 있지 않은 성과·숫자·기간·인원·기관·직책·수상은 절대 만들지 않습니다.
+- 경험에 결과가 없으면 결과를 꾸며 내지 말고 '(결과를 적어 주세요)'처럼 괄호로 자리를 남기고 missing 에 적습니다.
+- 문항이 묻는 것에 답하는 구조로: 첫 문장에 핵심 → 상황·과제 → 내가 한 행동 → 결과·배운 점 → 지원 직무와 연결.
+- 글자 수 제한이 있으면 그 안에서 씁니다(공백 포함). 과장된 수식어(최고의, 완벽한 등)는 쓰지 않습니다.
+- 공고 요약이 있으면 공고가 원하는 역량과 연결하되, 경험에 없는 역량을 있다고 쓰지 않습니다.
+- 한국어, 지원자 1인칭(저는)."""
+
+
+def draft_answer(question: str, limit: str, exps: list, posting_text: str, role_name: str) -> dict:
+    """문항 + 고른 경험(최대 3개) → {"answer": 초안, "missing": 사용자가 더 채울 것}. 화면에서 고친 뒤 저장."""
+    blocks = [_experience_block(e, role_name, []) for e in exps[:3]]
+    prompt = PARA.join([
+        f"문항: {question}", f"글자 수 제한: {limit or '없음'}", f"지원 직무: {role_name}",
+        f"공고 요약(참고): {(posting_text or '')[:2500]}",
+        "경험(이 내용만 근거로):", json.dumps(blocks, ensure_ascii=False, indent=1)])
+    data = _call(ANSWER_PROMPT, prompt, ANSWER_SCHEMA, "essay_draft")
+    data["missing"] = [m for m in data.get("missing", []) if m][:5]
+    return data
+
+
+# ── 면접 준비: 예상 질문 · 답변 피드백 ───────────────────────────────────
+
+INTERVIEW_Q_SCHEMA = {
+    "type": "object",
+    "properties": {"questions": {"type": "array", "items": {
+        "type": "object",
+        "properties": {"category": {"type": "string"}, "question": {"type": "string"}, "basis": {"type": "string"}},
+        "required": ["category", "question", "basis"], "additionalProperties": False}}},
+    "required": ["questions"], "additionalProperties": False,
+}
+
+INTERVIEW_Q_PROMPT = """당신은 무역·비즈니스 직무 면접관입니다. 채용공고와 지원자의 경험을 보고 실제로 나올 법한 예상 질문을 만듭니다.
+
+원칙:
+- category 는 '직무 역량', '경험', '문제 해결', '지원 동기' 중 하나입니다.
+- basis 에는 그 질문을 만든 근거를 공고 문장이나 지원자 경험 글에서 '그대로' 인용합니다(요약·창작 금지). 인용할 근거가 없으면 그 질문은 만들지 않습니다.
+- 지원자 경험에 없는 사실을 있다고 가정한 질문(예: 하지 않은 업무)을 만들지 않습니다.
+- 꼬리 질문이 나올 만한 구체적인 질문 6~8개, 한국어."""
+
+INTERVIEW_FB_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "good": {"type": "array", "items": {"type": "object", "properties": {"quote": {"type": "string"}, "why": {"type": "string"}},
+                                            "required": ["quote", "why"], "additionalProperties": False}},
+        "improve": {"type": "array", "items": {"type": "object", "properties": {"quote": {"type": "string"}, "how": {"type": "string"}},
+                                               "required": ["quote", "how"], "additionalProperties": False}},
+        "follow_up": {"type": "array", "items": {"type": "string"}},
+    },
+    "required": ["good", "improve", "follow_up"], "additionalProperties": False,
+}
+
+INTERVIEW_FB_PROMPT = """당신은 면접 코치입니다. 지원자의 답변만 보고 피드백합니다.
+
+원칙:
+- good·improve 의 quote 는 지원자 답변에 실제로 있는 구절을 그대로 인용합니다. 답변에 없는 말을 인용하지 않습니다.
+- improve 의 how 는 '이렇게 바꿔 말해 보세요' 수준으로 구체적으로. 경험에 없는 성과·숫자를 넣으라고 권하지 않습니다
+  (결과가 없으면 '실제로 있었던 결과가 있다면 덧붙이라'고만 합니다).
+- follow_up: 이 답변을 들은 면접관이 할 꼬리 질문 2~3개.
+- 각 항목 1~3개, 한국어."""
+
+
+def interview_questions(posting_text: str, exps: list, company: str, role_name: str) -> list[dict]:
+    blocks = [_experience_block(e, role_name, []) for e in exps[:8]]
+    prompt = PARA.join([f"회사: {company or '(미입력)'} · 직무: {role_name}", f"채용공고:\n{(posting_text or '')[:6000]}",
+                        "지원자 경험:", json.dumps(blocks, ensure_ascii=False, indent=1)])
+    return _call(INTERVIEW_Q_PROMPT, prompt, INTERVIEW_Q_SCHEMA, "interview_questions").get("questions", [])
+
+
+def interview_feedback(question: str, answer: str) -> dict:
+    data = _call(INTERVIEW_FB_PROMPT, PARA.join([f"질문: {question}", f"답변:\n{answer}"]), INTERVIEW_FB_SCHEMA, "interview_feedback")
+    norm = lambda s: re.sub(r"\s+", "", s or "")  # noqa: E731
+    src = norm(answer)
+    data["good"] = [g for g in data.get("good", []) if norm(g.get("quote")) and norm(g.get("quote")) in src][:3]
+    data["improve"] = [g for g in data.get("improve", []) if norm(g.get("quote")) and norm(g.get("quote")) in src][:3]
+    data["follow_up"] = [f for f in data.get("follow_up", []) if f][:3]
     return data

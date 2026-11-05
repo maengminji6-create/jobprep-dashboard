@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% from "components/macros.html" import csrf, delete_button %}
+{% block title %}{{ s.title }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><span class="eyebrow">Interview</span><h1>{{ s.title }}</h1>
+    <p>{{ role_name }} · 질문 {{ s.questions|length }}개 · 답변 {{ answered }}개{% if s.interview_date %} · 면접 {{ s.interview_date.strftime('%Y.%m.%d') }}{% endif %}
+      {% if posting %} · <a href="{{ url_for('experiences.posting_detail', pa_id=posting.id) }}">공고 분석 보기</a>{% endif %}</p></div>
+  <div class="row" style="gap:10px">
+    <form method="post" action="{{ url_for('interview.generate', sid=s.id) }}" class="inline-check">{{ csrf() }}
+      {% if ai_enabled %}<label class="inline-check"><input type="checkbox" name="use_ai" value="1"> ✦ AI</label>{% endif %}
+      <button class="btn secondary" type="submit" data-busy="질문을 만드는 중…">＋ 질문 더 만들기</button></form>
+    <a class="btn secondary" href="{{ url_for('interview.index') }}">← 목록</a>
+  </div>
+</div>
+
+{% for cat, qs in groups %}
+<section class="block reveal">
+  <div class="block-head"><div class="title"><span class="num">{{ '%02d'|format(loop.index) }}</span><div><h2>{{ cat }} <small class="muted">{{ qs|length }}</small></h2></div></div></div>
+  <div class="iv-list">
+    {% for q in qs %}{% set fb = q.feedback %}
+    <article class="card iv-q" id="q-{{ q.id }}">
+      <div class="iv-head">
+        <h3>{{ q.question }}</h3>
+        {% if q.source == 'ai' %}<span class="badge ai">AI</span>{% elif q.source == 'manual' %}<span class="badge">직접</span>{% endif %}
+        {% if q.asked %}<span class="badge ok">실제로 받음</span>{% endif %}
+      </div>
+      {% if q.basis %}<p class="iv-basis">근거 · {{ q.basis }}</p>{% endif %}
+      <form method="post" action="{{ url_for('interview.save_answer', qid=q.id) }}" class="iv-form">
+        {{ csrf() }}
+        {% set rec_ids = q.exp_id_list %}
+        {% if rec_ids %}
+        <div class="iv-exps">
+          {% for i in rec_ids if i in exps %}
+          <label class="role-check"><input type="checkbox" name="exp_ids" value="{{ i }}" checked><span>{{ exps[i].title }}</span></label>
+          <button type="button" class="btn ghost sm" data-outline="{{ outlines[i] }}">STAR 뼈대 넣기</button>
+          {% endfor %}
+        </div>
+        {% endif %}
+        <div class="field" style="margin-bottom:8px">
+          <select name="exp_ids" aria-label="다른 경험 추가"><option value="">＋ 답변에 쓸 다른 경험 고르기</option>
+            {% for i, e in exps.items() if i not in rec_ids %}<option value="{{ i }}">{{ e.title }}</option>{% endfor %}</select></div>
+        <textarea name="answer" class="iv-answer" placeholder="1분 안에 말할 답변을 적어 보세요. 결론 → 상황 → 내 행동 → 결과·배운 점 순서면 좋아요.">{{ q.answer }}</textarea>
+        <p class="qa-count"><b>{{ q.answer|replace('\n', '')|length }}</b>자 · 1분 답변은 대략 250~450자</p>
+        <details class="iv-more" {{ 'open' if q.asked or q.self_note }}><summary>면접 뒤 복기</summary>
+          <label class="inline-check"><input type="checkbox" name="asked" value="1" {{ 'checked' if q.asked }}> 실제 면접에서 받은 질문</label>
+          <textarea name="self_note" style="min-height:70px;margin-top:6px" placeholder="실제로 어떻게 답했는지, 꼬리 질문, 아쉬운 점">{{ q.self_note }}</textarea>
+        </details>
+        <div class="iv-btns">
+          <button class="btn sm" type="submit" name="action" value="save">저장</button>
+          <button class="btn secondary sm" type="submit" name="action" value="check" data-busy="점검하는 중…">저장하고 점검</button>
+          {% if ai_enabled %}<label class="inline-check"><input type="checkbox" name="use_ai" value="1"> ✦ AI 피드백도</label>{% endif %}
+        </div>
+      </form>
+      {% if fb %}
+      <div class="iv-fb">
+        {% if fb.rule %}<ul class="iv-check">{% for it in fb.rule['items'] %}<li class="{{ 'ok' if it.ok else '' }}">{{ it.text }}</li>{% endfor %}</ul>{% endif %}
+        {% if fb.ai %}
+        <div class="iv-ai">
+          {% for g in fb.ai.good %}<p><b class="ok-t">잘한 점</b> “{{ g.quote }}” — {{ g.why }}</p>{% endfor %}
+          {% for g in fb.ai.improve %}<p><b class="fix-t">고칠 점</b> “{{ g.quote }}” — {{ g.how }}</p>{% endfor %}
+          {% if fb.ai.follow_up %}<p><b>꼬리 질문</b></p><ul>{% for f in fb.ai.follow_up %}<li>{{ f }}</li>{% endfor %}</ul>{% endif %}
+        </div>
+        {% endif %}
+      </div>
+      {% endif %}
+      <form method="post" action="{{ url_for('interview.delete_question', qid=q.id) }}" class="iv-del" onsubmit="return confirm('이 질문을 지울까요?')">{{ csrf() }}
+        <button class="btn ghost sm" type="submit">질문 지우기</button></form>
+    </article>
+    {% endfor %}
+  </div>
+</section>
+{% else %}
+<div class="card">{{ empty('아직 질문이 없어요', "'질문 더 만들기'를 누르거나 아래에서 직접 추가해 보세요.") }}</div>
+{% endfor %}
+
+<div class="grid grid-2" style="align-items:start">
+  <section class="card" id="add">
+    <h2>질문 직접 추가</h2>
+    <form method="post" action="{{ url_for('interview.add_question', sid=s.id) }}">{{ csrf() }}
+      <div class="field"><select name="category" aria-label="질문 유형">{% for c in categories %}<option>{{ c }}</option>{% endfor %}</select></div>
+      <div class="field"><input type="text" name="question" placeholder="예: 최근 관심 있게 본 무역 이슈는?" aria-label="질문"></div>
+      <button class="btn secondary sm" type="submit">질문 추가</button></form>
+  </section>
+  <section class="card" id="review">
+    <h2>면접 일정 · 복기</h2>
+    <form method="post" action="{{ url_for('interview.save_review', sid=s.id) }}">{{ csrf() }}
+      <div class="field"><label for="rv-date">면접일 <span class="muted">· 넣으면 취업 일정에 표시돼요</span></label>
+        <input id="rv-date" type="date" name="interview_date" value="{{ s.interview_date.isoformat() if s.interview_date else '' }}"></div>
+      <div class="field"><label for="rv-text">복기</label>
+        <textarea id="rv-text" name="review" style="min-height:120px" placeholder="분위기, 실제 받은 질문, 잘한 점, 다음에 고칠 점">{{ s.review }}</textarea></div>
+      <button class="btn sm" type="submit">저장</button></form>
+  </section>
+</div>
+<div style="text-align:right;margin-top:16px">{{ delete_button(url_for('interview.delete', sid=s.id), '이 면접 준비 지우기') }}</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// 답변 글자 수(줄바꿈 제외)를 입력하는 동안 바로 셈
+document.querySelectorAll(".iv-answer").forEach(function (a) {
+  var out = a.parentNode.querySelector(".qa-count b");
+  a.addEventListener("input", function () { out.textContent = a.value.replace(/\n/g, "").length.toLocaleString(); });
+});
+// STAR 뼈대 넣기: 고른 경험의 STAR(내가 쓴 글)를 답변 칸에 넣음
+document.querySelectorAll("[data-outline]").forEach(function (b) {
+  b.addEventListener("click", function () {
+    var a = b.closest("form").querySelector(".iv-answer"), text = b.dataset.outline;
+    a.value = a.value.trim() ? a.value.replace(/\s+$/, "") + "\n\n" + text : text;
+    a.dispatchEvent(new Event("input")); a.focus();
+  });
+});
+</script>
+{% endblock %}

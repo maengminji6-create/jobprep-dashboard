@@ -7,13 +7,15 @@
 import json
 from datetime import datetime
 
+from ..core.job_status import normalize
 from ..core.scoping import create_owned, owned
 from ..extensions import db
 from .models import CATEGORIES, Certificate, Experience, Snapshot
 
 FORMAT = "growly-backup"
 VERSION = 1
-EXP_FIELDS = ("title", "category", "organization", "period", "role", "content", "strengths", "keywords", "reflection")
+EXP_FIELDS = ("title", "category", "organization", "period", "role", "content", "strengths", "keywords", "reflection",
+              "star_situation", "star_task", "star_action", "star_result", "competencies", "related_roles")
 CERT_FIELDS = ("name", "score", "acquired", "issuer", "note")
 STRENGTH_FIELDS = ("filename", "extracted_text", "parsed_json", "ai_json", "ai_role")
 APP_FIELDS = ("company", "position", "role_code", "status", "applied_at", "deadline", "url", "company_info", "talent",
@@ -47,9 +49,9 @@ def save_snapshot(name: str, data: dict | None = None) -> Snapshot:
 
 
 def validate(data) -> dict:
-    """올린 파일이 GROWLY 저장본인지 확인하고, 필드를 정리한 dict 를 돌려줍니다."""
+    """올린 파일이 CAIRN 저장본인지 확인하고, 필드를 정리한 dict 를 돌려줍니다."""
     if not isinstance(data, dict) or data.get("format") != FORMAT:
-        raise ValueError("GROWLY에서 내려받은 저장본(.json) 파일이 아니에요.")
+        raise ValueError("CAIRN에서 내려받은 저장본(.json) 파일이 아니에요.")
     exps, certs = data.get("experiences") or [], data.get("certificates") or []
     if not isinstance(exps, list) or not isinstance(certs, list):
         raise ValueError("저장본 형식이 올바르지 않아요.")
@@ -96,7 +98,9 @@ def restore(data: dict, experiences: bool = True, strength: bool = True, applica
             db.session.delete(a)
         db.session.flush()
         for item in data["applications"]:
-            create_owned(ApplicationRecord, **{f: item.get(f, "") for f in APP_FIELDS})
+            fields = {f: item.get(f, "") for f in APP_FIELDS}
+            fields["status"] = normalize(fields["status"], "서류 준비 중")
+            create_owned(ApplicationRecord, **fields)
             result["applications"] += 1
     sp = data.get("strength_profile")
     if strength and sp:

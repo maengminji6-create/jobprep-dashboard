@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% from "components/macros.html" import csrf, empty %}
+{% block title %}취업 일정{% endblock %}
+
+{% macro dday(e) %}{% set left = e.d_day %}<span class="dday {{ e.urgency }}">{{ '지남' if left < 0 else ('오늘' if left == 0 else 'D-' ~ left) }}</span>{% endmacro %}
+{% macro ev_link(e) %}{% if e.source == 'posting' %}{{ url_for('experiences.posting_detail', pa_id=e.id) }}{% elif e.source == 'interview' %}{{ url_for('interview.detail', sid=e.id) }}{% elif e.source == 'application' %}{{ url_for('applications.detail', rec_id=e.id) }}{% else %}#ev-{{ e.id }}{% endif %}{% endmacro %}
+{% set KIND_CLASS = {'공고 마감': 'k-posting', '서류 마감': 'k-posting', '서류 제출': 'k-submit', '면접': 'k-interview',
+                     '자격증 시험': 'k-exam', '개인 일정': 'k-personal', '기타': 'k-personal', '제출 완료': 'k-past'} %}
+
+{% block content %}
+<div class="page-head">
+  <div><span class="eyebrow">Schedule</span><h1>취업 일정</h1>
+    <p>공고 마감일과 지원 기록은 자동으로 들어와요. 면접·시험·개인 일정은 직접 추가하고 체크리스트로 준비해요.</p></div>
+</div>
+
+<div class="sched-layout">
+  <div class="sched-main">
+    <section class="card cal-card">
+      <div class="cal-head">
+        <a class="round-btn sm" href="{{ url_for('schedule.index', m=prev_m) }}" aria-label="이전 달">‹</a>
+        <h2>{{ year }}년 {{ month }}월</h2>
+        <a class="round-btn sm" href="{{ url_for('schedule.index', m=next_m) }}" aria-label="다음 달">›</a>
+        <a class="btn ghost sm" href="{{ url_for('schedule.index') }}" style="margin-left:auto">오늘</a>
+      </div>
+      <div class="cal" role="grid" aria-label="{{ year }}년 {{ month }}월 달력">
+        {% for d in ['일', '월', '화', '수', '목', '금', '토'] %}<div class="cal-dow {{ 'sun' if loop.first }}{{ 'sat' if loop.last }}">{{ d }}</div>{% endfor %}
+        {% for week in weeks %}{% for day in week %}
+        <div class="cal-day {{ 'out' if not day.in_month }} {{ 'today' if day.today }}" role="gridcell">
+          <span class="cal-n">{{ day.date.day }}</span>
+          {% for e in day.events[:3] %}
+          <a class="cal-ev {{ KIND_CLASS.get(e.kind, 'k-personal') }} {{ 'done' if e.done }} {{ e.urgency }}" href="{{ ev_link(e) }}"
+             title="{{ e.kind }} · {{ e.title }}{% if e.time %} · {{ e.time }}{% endif %}">{% if e.time %}{{ e.time }} {% endif %}{{ e.title }}</a>
+          {% endfor %}
+          {% if day.events|length > 3 %}<span class="cal-more">+{{ day.events|length - 3 }}</span>{% endif %}
+        </div>
+        {% endfor %}{% endfor %}
+      </div>
+      <div class="cal-legend">
+        {% for k, c in [('공고·서류 마감', 'k-posting'), ('서류 제출', 'k-submit'), ('면접', 'k-interview'), ('자격증 시험', 'k-exam'), ('개인 일정', 'k-personal')] %}
+        <span><i class="{{ c }}"></i>{{ k }}</span>{% endfor %}
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-head"><h3>{{ month }}월 일정 {{ month_events|length }}개</h3></div>
+      {% if month_events %}
+      <ul class="ev-list">
+        {% for e in month_events %}
+        <li class="ev-row {{ 'done' if e.done }}" {% if e.source == 'event' %}id="ev-{{ e.id }}"{% endif %}>
+          <div class="ev-date"><b>{{ e.date.day }}</b><small>{{ ['월', '화', '수', '목', '금', '토', '일'][e.date.weekday()] }}</small></div>
+          <div class="ev-body">
+            <div class="ev-top"><span class="ev-kind {{ KIND_CLASS.get(e.kind, 'k-personal') }}">{{ e.kind }}</span>
+              <b>{{ e.title }}</b>{% if e.time %}<span class="muted"> · {{ e.time }}</span>{% endif %}
+              {% if e.status %}<span class="badge">{{ e.status }}</span>{% endif %}
+              {% if not e.done %}{{ dday(e) }}{% endif %}</div>
+            {% if e.memo %}<p class="ev-memo">{{ e.memo }}</p>{% endif %}
+            {% if e.source == 'event' %}
+              {% if e.checklist %}
+              <ul class="checklist">
+                {% for c in e.checklist %}
+                <li><form method="post" action="{{ url_for('schedule.check', ev_id=e.id) }}">{{ csrf() }}<input type="hidden" name="i" value="{{ loop.index0 }}"><input type="hidden" name="m" value="{{ this_m }}">
+                  <button type="submit" class="check {{ 'on' if c.done }}" aria-pressed="{{ 'true' if c.done else 'false' }}">{{ c.text }}</button></form></li>
+                {% endfor %}
+              </ul>
+              <p class="muted ev-progress">{{ e.checked }}/{{ e.checklist|length }} 완료</p>
+              {% endif %}
+              <div class="ev-actions">
+                <form method="post" action="{{ url_for('schedule.check', ev_id=e.id) }}">{{ csrf() }}<input type="hidden" name="all" value="1"><input type="hidden" name="m" value="{{ this_m }}">
+                  <button class="btn ghost sm" type="submit">{{ '완료 취소' if e.done else '✓ 끝냄' }}</button></form>
+                <a class="btn ghost sm" href="{{ url_for('schedule.index', m=this_m, edit=e.id) }}#form">수정</a>
+                <form method="post" action="{{ url_for('schedule.delete', ev_id=e.id) }}" onsubmit="return confirm('이 일정을 지울까요?')">{{ csrf() }}<input type="hidden" name="m" value="{{ this_m }}">
+                  <button class="btn ghost sm" type="submit">삭제</button></form>
+                {% if e.posting_id %}<a class="btn ghost sm" href="{{ url_for('experiences.posting_detail', pa_id=e.posting_id) }}">공고 보기 →</a>{% endif %}
+              </div>
+            {% elif e.source == 'posting' %}
+              <div class="ev-actions">
+                <form method="post" action="{{ url_for('schedule.from_posting', pa_id=e.id) }}">{{ csrf() }}
+                  <button class="btn ghost sm" type="submit">＋ 준비 체크리스트 만들기</button></form>
+                <a class="btn ghost sm" href="{{ ev_link(e) }}">공고 보기 →</a>
+              </div>
+            {% elif e.source == 'interview' %}
+              <div class="ev-actions"><a class="btn ghost sm" href="{{ ev_link(e) }}">면접 준비 보기 →</a></div>
+            {% else %}
+              <div class="ev-actions"><a class="btn ghost sm" href="{{ ev_link(e) }}">지원 기록 보기 →</a></div>
+            {% endif %}
+          </div>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}{{ empty('이번 달 일정이 없어요', '공고에 마감일을 넣거나 오른쪽에서 일정을 추가해 보세요.') }}{% endif %}
+    </section>
+  </div>
+
+  <aside class="sched-side">
+    <section class="card">
+      <div class="card-head"><h3>다가오는 일정</h3><small>2주 안</small></div>
+      {% if upcoming %}
+      <ul class="up-list">
+        {% for e in upcoming %}
+        <li class="{{ e.urgency }}"><a href="{{ ev_link(e) if e.source != 'event' else url_for('schedule.index', m=e.date.strftime('%Y-%m')) ~ '#ev-' ~ e.id }}">
+          {{ dday(e) }}<span><b>{{ e.title }}</b><small>{{ e.date.strftime('%m.%d') }} · {{ e.kind }}{% if e.checklist %} · {{ e.checked }}/{{ e.checklist|length }}{% endif %}</small></span></a></li>
+        {% endfor %}
+      </ul>
+      {% else %}<p class="muted" style="font-size:.84rem">2주 안에 남은 일정이 없어요.</p>{% endif %}
+    </section>
+
+    <section class="card" id="form">
+      <div class="card-head"><h3>{{ '일정 수정' if edit else '일정 추가' }}</h3>{% if edit %}<a class="btn ghost sm" href="{{ url_for('schedule.index', m=this_m) }}">취소</a>{% endif %}</div>
+      <form method="post" action="{{ url_for('schedule.edit', ev_id=edit.id) if edit else url_for('schedule.new') }}">
+        {{ csrf() }}<input type="hidden" name="m" value="{{ this_m }}">
+        <div class="field"><label for="ev-title">일정 이름</label><input id="ev-title" type="text" name="title" required value="{{ edit.title if edit else '' }}" placeholder="예: 한빛무역 1차 면접"></div>
+        <div class="row">
+          <div class="field"><label for="ev-kind">종류</label><select id="ev-kind" name="kind">{% for k in kinds %}<option {{ 'selected' if edit and edit.kind == k }}>{{ k }}</option>{% endfor %}</select></div>
+          <div class="field"><label for="ev-date">날짜</label><input id="ev-date" type="date" name="date" required value="{{ edit.date.isoformat() if edit else today.isoformat() }}"></div>
+          <div class="field"><label for="ev-time">시간</label><input id="ev-time" type="time" name="time" value="{{ edit.time if edit else '' }}"></div>
+        </div>
+        <div class="field"><label for="ev-posting">연결할 공고 <span class="muted">(선택)</span></label>
+          <select id="ev-posting" name="posting_id"><option value="">연결 안 함</option>
+            {% for p in postings %}<option value="{{ p.id }}" {{ 'selected' if edit and edit.posting_id == p.id }}>{{ p.company or p.title[:30] }}{% if p.deadline %} · 마감 {{ p.deadline.strftime('%m.%d') }}{% endif %}</option>{% endfor %}</select></div>
+        <div class="field"><label for="ev-check">체크리스트 <span class="muted">한 줄에 하나</span></label>
+          <textarea id="ev-check" name="checklist" style="min-height:100px" placeholder="예: 예상 질문 정리&#10;회사 최근 뉴스 읽기&#10;면접 복장 준비">{% if edit %}{% for c in edit.checklist %}{{ c.text }}{% if not loop.last %}&#10;{% endif %}{% endfor %}{% endif %}</textarea></div>
+        <div class="field"><label for="ev-memo">메모</label><textarea id="ev-memo" name="memo" style="min-height:70px">{{ edit.memo if edit else '' }}</textarea></div>
+        <button class="btn" type="submit">{{ '고친 내용 저장' if edit else '일정 추가' }}</button>
+      </form>
+    </section>
+  </aside>
+</div>
+{% endblock %}

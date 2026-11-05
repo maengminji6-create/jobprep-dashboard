@@ -1,28 +1,131 @@
 {% extends "base.html" %}
 {% from "components/macros.html" import csrf %}
-{% block title %}경험 수정{% endblock %}
+{% block title %}{{ exp.title }} · 경험{% endblock %}
 {% block content %}
 <div class="page-head">
-  <div><span class="eyebrow">Edit Experience</span><h1>경험 수정</h1>
-    <p>저장하면 TOP 3와 차트에 바로 반영돼요.</p></div>
-  <a class="btn secondary" href="{{ url_for('experiences.index') }}">← 경험 분석</a>
+  <div><span class="eyebrow">Experience</span><h1>{{ exp.title }}</h1>
+    <p>STAR로 정리해 두면 자소서·면접 답변에 그대로 다시 쓸 수 있어요. 저장하면 분석에 바로 반영돼요.</p></div>
+  <div class="row" style="gap:10px">
+    {% if ai_enabled %}
+    <form method="post" action="{{ url_for('experiences.structure', exp_id=exp.id) }}" data-ai-form>{{ csrf() }}
+      <button class="btn secondary" type="submit">✦ AI로 STAR 초안 만들기</button></form>
+    {% endif %}
+    <a class="btn secondary" href="{{ url_for('experiences.index') }}#browse">← 경험 분석</a>
+  </div>
 </div>
-<form class="card" method="post">
-  {{ csrf() }}
-  <div class="row">
-    <div class="field" style="flex:2 1 260px"><label>경험 이름</label><input type="text" name="title" value="{{ exp.title }}" required></div>
-    <div class="field"><label>분류</label><select name="category">{% for c in categories %}<option {{ 'selected' if c == exp.category }}>{{ c }}</option>{% endfor %}</select></div>
-  </div>
-  <div class="row">
-    <div class="field"><label>기관·회사</label><input type="text" name="organization" value="{{ exp.organization }}"></div>
-    <div class="field"><label>기간</label><input type="text" name="period" value="{{ exp.period }}"></div>
-  </div>
-  <div class="grid grid-2" style="gap:12px">
-    {% for f in exp.TEXT_FIELDS if f != 'keywords' %}
-    <div class="field"><label>{{ exp.TEXT_LABELS[f] }}</label><textarea name="{{ f }}" style="min-height:{{ 200 if f == 'content' else 130 }}px">{{ exp[f] or '' }}</textarea></div>
-    {% endfor %}
-  </div>
-  <div class="field"><label>키워드 (쉼표나 #으로 구분)</label><input type="text" name="keywords" value="{{ exp.keywords or '' }}"></div>
-  <button class="btn" type="submit">저장</button>
-</form>
+
+<div class="exp-layout">
+  <form class="exp-main" method="post" action="{{ url_for('experiences.edit', exp_id=exp.id) }}" id="expForm">
+    {{ csrf() }}
+    <section class="card">
+      <h2>기본 정보</h2>
+      <div class="row">
+        <div class="field" style="flex:2 1 260px"><label for="f-title">경험 이름</label><input id="f-title" type="text" name="title" value="{{ exp.title }}" required></div>
+        <div class="field"><label for="f-cat">분류</label><select id="f-cat" name="category">{% for c in categories %}<option {{ 'selected' if c == exp.category }}>{{ c }}</option>{% endfor %}</select></div>
+      </div>
+      <div class="row">
+        <div class="field"><label for="f-org">기관·회사</label><input id="f-org" type="text" name="organization" value="{{ exp.organization or '' }}"></div>
+        <div class="field"><label for="f-period">기간</label><input id="f-period" type="text" name="period" value="{{ exp.period or '' }}" placeholder="예: 2025.04 ~ 2025.08"></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>경험 기록</h2>
+      <div class="grid grid-2" style="gap:12px">
+        {% for f in exp.BASE_FIELDS if f != 'keywords' %}
+        <div class="field"><label for="f-{{ f }}">{{ exp.TEXT_LABELS[f] }}</label>
+          <textarea id="f-{{ f }}" name="{{ f }}" style="min-height:{{ 180 if f == 'content' else 120 }}px">{{ exp[f] or '' }}</textarea></div>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="card star-card" id="star">
+      <div class="card-head"><h2>STAR로 정리</h2>
+        <small>{{ '✦ AI 초안이에요. 내 글에서만 옮겼는지 확인하고 저장하세요.' if draft else '비워 둔 칸은 오른쪽 질문을 보고 채워 보세요.' }}</small></div>
+      {% if draft_notes %}<div class="check-box"><b>초안에서 뺀 부분</b><ul>{% for n in draft_notes %}<li>{{ n }}</li>{% endfor %}</ul></div>{% endif %}
+      <div class="star-grid">
+        {% for f in exp.STAR_FIELDS %}
+        {% set v = draft[f] if draft and draft[f] else (exp[f] or '') %}
+        <div class="field star-{{ loop.index }}"><label for="f-{{ f }}"><b class="star-letter">{{ 'STAR'[loop.index0] }}</b> {{ exp.TEXT_LABELS[f]|replace(' (' ~ 'STAR'[loop.index0] ~ ')', '') }}
+          {% if draft and draft[f] and draft[f] != (exp[f] or '') %}<span class="badge ai">AI 초안</span>{% endif %}</label>
+          <textarea id="f-{{ f }}" name="{{ f }}" class="{{ 'is-draft' if draft and draft[f] }}">{{ v }}</textarea></div>
+        {% endfor %}
+      </div>
+      {% if ai_questions %}
+      <div class="ask-box"><b>AI가 더 알고 싶은 것</b><ul>{% for q in ai_questions %}<li>{{ q }}</li>{% endfor %}</ul></div>
+      {% endif %}
+    </section>
+
+    <section class="card">
+      <h2>핵심 역량 · 관련 직무</h2>
+      <div class="field"><label for="f-comp">핵심 역량 태그 <span class="muted">쉼표로 구분</span></label>
+        <input id="f-comp" type="text" name="competencies" value="{{ exp.competencies or '' }}" placeholder="예: 글로벌 커뮤니케이션, 무역 실무"></div>
+      {% set ai_comp = draft.competencies if draft else [] %}
+      {% if suggestions or ai_comp %}
+      <p class="muted" style="font-size:.78rem;margin:-4px 0 8px">추천 · 누르면 태그에 넣어요. 내 글에서 찾은 근거를 함께 보여 드려요.</p>
+      <div class="comp-suggest">
+        {% for c in ai_comp %}<button type="button" class="comp-chip ai" data-add-tag="{{ c.name }}" title="{{ c.evidence }}">✦ {{ c.name }}<small>“{{ c.evidence|truncate(60, True, '…') }}”</small></button>{% endfor %}
+        {% for c in suggestions if c.name not in ai_comp|map(attribute='name')|list %}<button type="button" class="comp-chip" data-add-tag="{{ c.name }}" title="{{ c.evidence }}">＋ {{ c.name }}<small>{{ c.words|join(' · ') }}</small></button>{% endfor %}
+      </div>
+      {% endif %}
+      <div class="field" style="margin-top:14px"><label>관련 직무 {% if role_hint %}<span class="muted">· ★ 이 경험과 잘 맞는 직무</span>{% endif %}</label>
+        <div class="role-checks">
+          {% for r in roles %}
+          <label class="role-check"><input type="checkbox" name="related_roles" value="{{ r.code }}" {{ 'checked' if r.code in exp.related_role_list }}>
+            <span>{{ '★ ' if r.code in role_hint }}{{ r.name }}</span></label>
+          {% endfor %}
+        </div></div>
+      <div class="field"><label for="f-kw">키워드 <span class="muted">쉼표나 #으로 구분</span></label>
+        <input id="f-kw" type="text" name="keywords" value="{{ exp.keywords or '' }}"></div>
+    </section>
+
+    <div class="form-actions"><button class="btn" type="submit">저장</button></div>
+  </form>
+
+  <aside class="exp-side">
+    <section class="card">
+      <div class="card-head"><h3>활용 내역</h3><small>{{ usage.total }}곳</small></div>
+      {% if usage.total %}
+      {% if usage.postings %}<h4 class="side-h">근거로 쓰인 공고</h4>
+      <ul class="use-list">{% for p in usage.postings %}
+        <li><a href="{{ url_for('experiences.posting_detail', pa_id=p.id) }}">{{ p.name }}</a>
+          {% if p.status %}<span class="muted"> · {{ p.status }}</span>{% endif %}
+          {% if p.met %}<small>요건 {{ p.met }}개 충족{% if p['items'] %} · {{ p['items']|join(', ')|truncate(50, True, '…') }}{% endif %}</small>{% endif %}</li>
+      {% endfor %}</ul>{% endif %}
+      {% if usage.interviews %}<h4 class="side-h">면접 답변</h4>
+      <ul class="use-list">{% for i in usage.interviews %}
+        <li><a href="{{ url_for('interview.detail', sid=i.id) }}">{{ i.title }}</a><small>{{ i.question|truncate(50, True, '…') }}</small></li>
+      {% endfor %}</ul>{% endif %}
+      {% if usage.essays %}<h4 class="side-h">답변에 쓴 자소서 문항</h4>
+      <ul class="use-list">{% for e in usage.essays %}
+        <li><a href="{{ url_for('applications.detail', rec_id=e.id) }}">{{ e.company }}</a><small>{{ e.question }}</small></li>
+      {% endfor %}</ul>{% endif %}
+      {% else %}
+      <p class="muted" style="font-size:.84rem">아직 이 경험을 근거로 쓴 공고·자소서가 없어요. 공고를 분석하면 요건에 맞는 경험이 자동으로 연결돼요.</p>
+      {% endif %}
+    </section>
+    {% if gaps %}
+    <section class="card">
+      <div class="card-head"><h3>채우면 좋은 칸</h3></div>
+      <ul class="gap-list">{% for g in gaps %}<li><a href="#f-{{ g.field }}"><b>{{ g.label }}</b></a><p>{{ g.question }}</p></li>{% endfor %}</ul>
+      <p class="muted" style="font-size:.76rem;margin:8px 0 0">실제로 있었던 일만 적어 주세요. 숫자가 없다면 비워 둬도 괜찮아요.</p>
+    </section>
+    {% endif %}
+  </aside>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// 역량 추천 칩: 누르면 태그 칸에 추가(이미 있으면 그대로)
+document.querySelectorAll("[data-add-tag]").forEach(function (b) {
+  b.addEventListener("click", function () {
+    var input = document.getElementById("f-comp"), tag = b.dataset.addTag;
+    var tags = input.value.split(",").map(function (t) { return t.trim(); }).filter(Boolean);
+    if (tags.indexOf(tag) < 0) tags.push(tag);
+    input.value = tags.join(", ");
+    b.classList.add("added");
+  });
+});
+</script>
 {% endblock %}

@@ -8,6 +8,7 @@
     <p>{{ rec.position or '직무 미입력' }}{% if rec.role_code in role_map %} · {{ role_map[rec.role_code].name }}{% endif %}</p></div>
   <div class="row" style="gap:8px">
     <a class="btn secondary" href="{{ url_for('applications.index') }}">← 보관함</a>
+    <a class="btn secondary" href="{{ url_for('applications.print_view', rec_id=rec.id) }}" target="_blank" rel="noopener">⤓ PDF</a>
     <a class="btn" href="{{ url_for('applications.edit', rec_id=rec.id) }}">수정</a>
   </div>
 </div>
@@ -16,7 +17,7 @@
   <div class="app-summary">
     <form method="post" action="{{ url_for('applications.set_status', rec_id=rec.id) }}" class="status-steps">
       {{ csrf() }}
-      {% for s in ['작성 중', '제출 완료', '서류 합격', '면접 진행', '최종 합격', '불합격'] %}
+      {% for s in statuses %}
       <button type="submit" name="status" value="{{ s }}" class="{{ 'on' if s == rec.status }}">{{ s }}</button>
       {% endfor %}
     </form>
@@ -56,6 +57,26 @@
   <div class="card"><p class="muted">저장한 문항이 없어요. 수정에서 문항과 답변을 추가하세요.</p></div>
   {% endfor %}
 </section>
+
+{% if rec.versions %}
+<section class="block reveal" id="versions">
+  <div class="block-head"><div class="title"><span class="num">03</span><div><h2>이전 버전 <small class="muted">{{ rec.versions|length }}개</small></h2>
+    <p>답변을 고쳐 저장할 때마다 바뀌기 전 내용을 남겨요. 되돌리면 지금 답변도 버전으로 남아요.</p></div></div></div>
+  <div class="card">
+    <ul class="ver-list">
+      {% for v in rec.versions %}
+      <li>
+        <details><summary><b>{{ v.created_at|localtime }}</b> 저장본 · 문항 {{ v.qa|length }} · {{ '{:,}'.format(v.total_chars or 0) }}자</summary>
+          {% for item in v.qa %}<div class="ver-qa"><b>{{ item.q or '(문항 없음)' }}</b><p class="pre">{{ item.a }}</p></div>{% endfor %}
+        </details>
+        <form method="post" action="{{ url_for('applications.restore_version', rec_id=rec.id, ver_id=v.id) }}">{{ csrf() }}
+          <button class="btn ghost sm" type="submit">이 버전으로 되돌리기</button></form>
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+</section>
+{% endif %}
 
 <div style="text-align:right">{{ delete_button(url_for('applications.delete', rec_id=rec.id), '이 지원 기록 지우기') }}</div>
 {% endblock %}

@@ -1,47 +1,44 @@
-from flask import current_app, flash, redirect, render_template, request, url_for
-from flask_login import current_user, login_required, login_user, logout_user
+from flask import flash, redirect, render_template, request, url_for
+from flask_login import current_user, login_required, login_user
 
+from ..extensions import db
 from . import bp
-from .services import authenticate, register_user
+from .services import get_or_create_visitor, make_access_key, user_from_key
 
 
-@bp.route("/register", methods=["GET", "POST"])
-def register():
-    if current_user.is_authenticated:
-        return redirect(url_for("experiences.index"))
-    if not current_app.config["ALLOW_SIGNUP"]:
-        flash("지금은 새 회원가입을 받지 않아요.", "info")
-        return redirect(url_for("auth.login"))
-    if request.method == "POST":
-        user, error = register_user(request.form.get("email"), request.form.get("name"),
-                                    request.form.get("password"))
-        if error:
-            flash(error, "error")
-        else:
-            login_user(user)
-            flash(f"{user.name}님, 환영합니다! 경험정리 파일을 올리거나 경험을 직접 추가해 보세요.", "success")
-            return redirect(url_for("experiences.index"))
-    return render_template("auth/register.html")
+@bp.before_app_request
+def auto_login():
+    """로그인 화면 없이 내 공간으로 자동 접속(정적 파일 요청은 건너뜀)."""
+    if request.endpoint == "static" or current_user.is_authenticated:
+        return
+    login_user(get_or_create_visitor(), remember=True)
 
 
-@bp.route("/login", methods=["GET", "POST"])
-def login():
-    if current_user.is_authenticated:
-        return redirect(url_for("experiences.index"))
-    if request.method == "POST":
-        user = authenticate(request.form.get("email"), request.form.get("password"))
-        if user:
-            login_user(user, remember=bool(request.form.get("remember")))
-            nxt = request.args.get("next")
-            if not nxt or not nxt.startswith("/") or nxt.startswith("//"):
-                nxt = url_for("experiences.index")
-            return redirect(nxt)
-        flash("이메일 또는 비밀번호가 올바르지 않습니다.", "error")
-    return render_template("auth/login.html")
-
-
-@bp.route("/logout", methods=["POST"])
+@bp.route("/", methods=["GET", "POST"])
 @login_required
-def logout():
-    logout_user()
-    return redirect(url_for("auth.login"))
+def me():
+    """내 공간: 이름 바꾸기 · 기록 열쇠 만들기."""
+    key = None
+    if request.method == "POST":
+        if request.form.get("action") == "key":
+            key = make_access_key(current_user)
+        else:
+            name = (request.form.get("name") or "").strip()[:80]
+            if name:
+                current_user.name = name
+                db.session.commit()
+                flash("이름을 바꿨어요.", "success")
+            return redirect(url_for("auth.me"))
+    return render_template("auth/me.html", key=key)
+
+
+@bp.route("/open", methods=["POST"])
+def open_with_key():
+    """기록 열쇠로 내 공간 다시 열기(다른 기기 · 쿠키를 지운 뒤)."""
+    user = user_from_key(request.form.get("key"))
+    if not user:
+        flash("열쇠가 맞지 않아요. 복사한 그대로 붙여 넣었는지 확인해 주세요.", "error")
+        return redirect(url_for("auth.me"))
+    login_user(user, remember=True)
+    flash("내 기록을 다시 열었어요.", "success")
+    return redirect(url_for("experiences.index"))

@@ -16,8 +16,8 @@ ALLOWED_EXT = {"docx", "pdf", "txt", "md"} | SPREADSHEET_EXT
 HEADER_RE = re.compile(
     r"^\s*(#{1,4}\s+.+|\[.{2,60}\]\s*.*|【.{2,60}】.*|[■●◆▶◼︎□○◇►▪]\s*.{2,80}|\d{1,2}[\.\)]\s+.{2,60}|"
     r"(경험|활동|프로젝트|인턴|Experience)\s*\d+\s*[:.\-].*)$")
-PERIOD_RE = re.compile(
-    r"(\d{4}\s*[.\-/년]\s*\d{1,2}\s*월?)\s*[~\-–—]\s*(\d{4}\s*[.\-/년]\s*\d{1,2}\s*월?|현재|진행\s*중)")
+_DATE = r"\d{4}\s*[.\-/년]\s*\d{1,2}\s*월?(?:\s*[.\-/]\s*\d{1,2}\s*일?)?\.?"  # 2024.03 · 2024년 3월 · 2024.03.15.
+PERIOD_RE = re.compile(rf"({_DATE})\s*[~\-–—]\s*({_DATE}|현재|진행\s*중)")
 
 CATEGORY_HINTS = [
     ("인턴·실무", ["인턴", "intern", "현장실습", "실습", "실무", "근무", "재직", "계약직"]),
@@ -58,15 +58,53 @@ def extract_text(filename: str, data: bytes) -> str:
             lines.append("")
         return "\n".join(lines)
     if ext == "pdf":
-        from pypdf import PdfReader
-        reader = PdfReader(io.BytesIO(data))
-        return "\n".join((page.extract_text() or "") for page in reader.pages)
+        return _pdf_text(data)
     for enc in ("utf-8", "cp949", "euc-kr"):
         try:
             return data.decode(enc)
         except UnicodeDecodeError:
             continue
     return data.decode("utf-8", errors="ignore")
+
+
+def _pdf_text(data: bytes) -> str:
+    """PDF 글을 줄 단위로 뽑고, 본문보다 큰 글씨의 짧은 줄은 '## 제목'으로 표시합니다.
+    PDF에는 Word 같은 제목 스타일이 없어서 글자 크기로 경험 제목을 알아봅니다."""
+    import math
+
+    from pypdf import PdfReader
+    reader = PdfReader(io.BytesIO(data))
+    lines: list[list] = []  # [글, 가장 큰 글자 크기]
+
+    def visit(text, cm, tm, _font, size):
+        if not text:
+            return
+        a, b = tm[0] * cm[0] + tm[1] * cm[2], tm[0] * cm[1] + tm[1] * cm[3]  # 글자 행렬의 가로 배율
+        eff = (size or 0) * (math.hypot(a, b) or 1)
+        parts = text.split("\n")
+        for i, part in enumerate(parts):
+            if i or not lines:
+                lines.append(["", 0.0])
+            if part.strip():
+                lines[-1][0] += part
+                lines[-1][1] = max(lines[-1][1], eff)
+
+    for page in reader.pages:
+        lines.append(["", 0.0])
+        page.extract_text(visitor_text=visit)
+        lines.append(["", 0.0])  # 쪽 사이는 빈 줄
+
+    weights: dict[float, int] = {}
+    for t, s in lines:
+        if t.strip() and s:
+            weights[round(s, 1)] = weights.get(round(s, 1), 0) + len(t.strip())
+    body = max(weights, key=weights.get) if weights else 0
+    out = []
+    for t, s in lines:
+        t = t.strip()
+        big = body and s >= body * 1.08 and len(t) <= 60
+        out.append(f"## {t}" if t and big and not HEADER_RE.match(t) else t)
+    return "\n".join(out)
 
 
 def guess_category(title: str, body: str = "") -> str:
@@ -84,12 +122,26 @@ def _clean_header(line: str) -> str:
     return line.strip("[]【】 ").strip()
 
 
+def _period_titles(lines: list[str]) -> set[int]:
+    """바로 다음 줄(빈 줄 건너뜀)이 기간으로 시작하는 짧은 줄 = 경험 제목으로 봄. 예: '무역 인턴' / '2024.03 ~ 2024.06'"""
+    found = set()
+    for i, ln in enumerate(lines):
+        t = ln.strip()
+        if not t or len(t) > 60 or PERIOD_RE.search(t):
+            continue
+        nxt = next((x.strip() for x in lines[i + 1:i + 3] if x.strip()), "")
+        if PERIOD_RE.match(nxt) or (PERIOD_RE.search(nxt) and len(nxt) <= 60):
+            found.add(i)
+    return found
+
+
 def split_experiences(text: str) -> list[dict]:
     lines = [ln.rstrip() for ln in (text or "").splitlines()]
+    period_titles = _period_titles(lines) if sum(1 for ln in lines if HEADER_RE.match(ln)) < 2 else set()
     blocks: list[dict] = []
     cur = None
-    for ln in lines:
-        if HEADER_RE.match(ln) and len(ln.strip()) <= 90:
+    for i, ln in enumerate(lines):
+        if (HEADER_RE.match(ln) and len(ln.strip()) <= 90) or i in period_titles:
             if cur and (cur["body"] or cur["title"]):
                 blocks.append(cur)
             cur = {"title": _clean_header(ln), "body": []}

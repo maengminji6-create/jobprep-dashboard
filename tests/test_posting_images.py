@@ -18,6 +18,14 @@ VISION = {
 }
 
 
+def submit_review(client, html: str) -> str:
+    """원문 확인 화면의 폼을 그대로 제출하고 결과 화면 HTML을 돌려줌."""
+    form = BeautifulSoup(html, "html.parser").select_one("form.review-card")
+    data = {i["name"]: i.get("value", "") for i in form.select("input[name]") if i.get("type") != "checkbox"}
+    data["posting_text"] = form.select_one("textarea[name=posting_text]").text
+    return client.post("/experiences/posting", data=data, follow_redirects=True).get_data(as_text=True)
+
+
 def _png(w, h):
     buf = io.BytesIO()
     Image.new("RGB", (w, h), (255, 255, 255)).save(buf, "PNG")
@@ -49,10 +57,13 @@ def test_upload_screenshot_is_read_and_matched(app, auth_client, user, monkeypat
         seen["n"] = len(chunks)
         return VISION
     monkeypatch.setattr(ai_client, "read_posting_images", fake)
-    r = auth_client.post("/experiences/posting", data={"images": [(io.BytesIO(_png(900, 1600)), "posting.png")]},
-                         content_type="multipart/form-data", follow_redirects=True)
-    page = r.get_data(as_text=True)
-    assert seen["n"] == 2 and "이미지 속 공고까지 읽어" in page
+    r = auth_client.post("/experiences/posting", data={"mode": "image", "images": [(io.BytesIO(_png(900, 1600)), "posting.png")]},
+                         content_type="multipart/form-data")
+    review = r.get_data(as_text=True)
+    assert seen["n"] == 2 and "읽은 원문 확인" in review and "구매 전략 수립" in review  # 분석 전에 읽은 원문을 보여 줌
+    assert not db.session.query(PostingAnalysis).count()
+    page = submit_review(auth_client, review)
+    assert "이미지 속 공고까지 읽어" in page
     pa = db.session.query(PostingAnalysis).filter_by(user_id=user.id).one()
     assert pa.company == "한미약품" and pa.vision["positions"][0]["name"] == "구매"
     assert "소싱 인턴" in [x["title"] for x in pa.result["recommendations"]]  # 이미지 속 '구매·공급업체'로 매칭
@@ -68,15 +79,15 @@ def test_link_images_without_key_shows_notice(app, auth_client, user, monkeypatc
     db.session.add(Experience(user_id=user.id, title="무역 인턴", category="인턴·실무", role="수출 오더 관리, 해외 바이어 응대",
                               content="", strengths="", keywords="", reflection=""))
     db.session.commit()
-    import app.experiences.routes as routes
+    import app.experiences.posting_extract as pex
     text = ("한빛무역 해외영업 채용\n주요업무\n- 해외 바이어 발굴 및 수출 오더 관리\n자격요건\n- 영어 가능자\n우대사항\n- 무역영어 자격 보유자\n"
             "근무조건\n- 서울 본사 정규직, 주 5일 근무, 4대보험 및 성과급 지급")
-    monkeypatch.setattr(routes, "fetch_posting_full", lambda url: {"title": "공고", "text": text,
-                                                                    "images": ["https://example.com/p.jpg"]})
+    monkeypatch.setattr(pex, "fetch_posting_full", lambda url: {"title": "공고", "text": text,
+                                                                 "images": ["https://example.com/p.jpg"]})
     monkeypatch.setattr(pim, "download_image", lambda url: _png(900, 2000))
-    r = auth_client.post("/experiences/posting", data={"url": "https://example.com/job"}, follow_redirects=True)
-    page = r.get_data(as_text=True)
-    assert "OPENAI_API_KEY" in page
+    review = auth_client.post("/experiences/posting", data={"mode": "url", "url": "https://example.com/job"}).get_data(as_text=True)
+    assert "OPENAI_API_KEY" in review and "확인 필요" in review  # 이미지를 못 읽은 이유를 확인 화면에서 알려 줌
+    page = submit_review(auth_client, review)
     pa = db.session.query(PostingAnalysis).filter_by(user_id=user.id).one()
     assert pa.images == ["https://example.com/p.jpg"] and not pa.vision
     assert "본문 이미지가 1장" in page and "원본 이미지 1장 보기" in page

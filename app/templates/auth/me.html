@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% from "components/macros.html" import csrf %}
+{% block title %}내 공간{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <span class="eyebrow">My Space</span>
+    <h1>내 공간</h1>
+    <p>로그인 없이 이 브라우저에 내 기록이 저장돼요. 다른 사람은 내 기록을 볼 수 없어요.</p>
+  </div>
+</div>
+
+<div class="grid grid-2">
+  <section class="card">
+    <h2>이름</h2>
+    <p class="muted">대시보드 제목에 쓰여요.</p>
+    <form method="post" class="row">
+      {{ csrf() }}
+      <div class="field"><input type="text" name="name" value="{{ current_user.name }}" maxlength="80" aria-label="이름"></div>
+      <div class="field" style="flex:0 0 auto"><button class="btn secondary" type="submit">저장</button></div>
+    </form>
+  </section>
+
+  <section class="card">
+    <h2>기록 열쇠</h2>
+    <p class="muted">브라우저 기록(쿠키)을 지우거나 다른 기기에서 열면 새 빈 공간이 열려요.
+      그때 이 열쇠를 넣으면 내 기록을 다시 열 수 있어요. 열쇠는 비밀번호처럼 나만 보관하세요.</p>
+    {% if key %}
+    <div class="key-box">
+      <code id="access-key">{{ key }}</code>
+      <button class="btn sm" type="button" data-copy="#access-key">복사</button>
+    </div>
+    <p class="muted" style="font-size:.82rem">이 화면을 벗어나면 다시 볼 수 없어요. 지금 메모해 두세요. 새로 만들면 이전 열쇠는 쓸 수 없어요.</p>
+    {% else %}
+    <form method="post">
+      {{ csrf() }}<input type="hidden" name="action" value="key">
+      <button class="btn" type="submit">열쇠 만들기</button>
+    </form>
+    {% endif %}
+  </section>
+
+  <section class="card span-2">
+    <h2>열쇠로 내 기록 열기</h2>
+    <p class="muted">다른 기기에서 만든 내 기록을 이 브라우저로 불러와요.</p>
+    <form method="post" action="{{ url_for('auth.open_with_key') }}" class="row">
+      {{ csrf() }}
+      <div class="field"><input type="text" name="key" placeholder="예: 12-AbCd…" autocomplete="off" aria-label="기록 열쇠"></div>
+      <div class="field" style="flex:0 0 auto"><button class="btn secondary" type="submit">열기</button></div>
+    </form>
+  </section>
+</div>
+{% endblock %}

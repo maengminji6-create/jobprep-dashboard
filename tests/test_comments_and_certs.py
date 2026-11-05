@@ -123,11 +123,3 @@ def test_cannot_delete_others_upload_or_reset_theirs(app, client):
     client.post("/experiences/reset", data={"confirm": "삭제"})
     assert db.session.query(Experience).filter_by(user_id=b.id).count() == 1
 
-
-def test_signup_can_be_closed(app, client):
-    app.config["ALLOW_SIGNUP"] = False
-    assert "회원가입" not in client.get("/auth/login").get_data(as_text=True)
-    r = client.post("/auth/register", data={"email": "x@test.com", "name": "x", "password": "password123"})
-    assert r.status_code == 302 and "/auth/login" in r.headers["Location"]
-    from app.auth.models import User
-    assert db.session.query(User).filter_by(email="x@test.com").count() == 0

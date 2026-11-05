@@ -91,7 +91,7 @@ def test_snapshot_save_load_export_import(auth_client, user):
     assert "저장본으로 추가했어요" in r.get_data(as_text=True)
     bad = auth_client.post("/experiences/data/import", data={"file": (io.BytesIO(b'{"x":1}'), "x.json")},
                            content_type="multipart/form-data", follow_redirects=True)
-    assert "GROWLY에서 내려받은 저장본" in bad.get_data(as_text=True)
+    assert "CAIRN에서 내려받은 저장본" in bad.get_data(as_text=True)
 
 
 def test_snapshots_certs_exclusions_are_private(app, client):

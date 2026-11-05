@@ -1,28 +1,82 @@
-// 공통 스크립트: 차트 기본값, 접속 인트로, 스크롤 모션, 점수 링, AI 버튼 상태
+// 공통 스크립트: 차트 기본값, 알림 토스트, 첫 화면 시계, 코멘트 서랍, 스크롤 모션, 점수 링, AI 버튼 상태
 (function () {
   if (window.Chart) {
+    // 선명하게: 화면 배율이 낮아도 최소 2배 해상도로 그리고, 글씨는 12px · 진한 회색
+    Chart.defaults.devicePixelRatio = Math.max(2, window.devicePixelRatio || 1);
     Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
-    Chart.defaults.color = "#998d78";
-    Chart.defaults.borderColor = "#eee2cb";
+    Chart.defaults.font.size = 12;
+    Chart.defaults.color = "#5c5e64";
+    Chart.defaults.borderColor = "#d6d8dc";
     Chart.defaults.plugins.legend.labels.boxWidth = 10;
     Chart.defaults.plugins.legend.labels.usePointStyle = true;
-    Chart.defaults.elements.bar.borderRadius = 8;
+    Chart.defaults.plugins.tooltip.padding = 10;
+    Chart.defaults.plugins.tooltip.cornerRadius = 10;
+    Chart.defaults.elements.bar.borderRadius = 6;
   }
-  // 차트 공통 색: 진한 머스터드 · 연한 옐로 · 코랄 · 세이지 — app.css 토큰과 맞춤
-  window.PALETTE = { main: "#9c6b17", light: "#ecc66a", coral: "#d9785f", sage: "#7f9a6a",
-                     mainFill: "rgba(196,144,42,.20)", grid: "#f3e9d6", label: "#998d78", labelOn: "#6e4a0f" };
+  // 차트 공통 색: 슬레이트 블루 · 연한 슬레이트 · 더스티 로즈 · 세이지 — app.css 토큰과 맞춤
+  window.PALETTE = { main: "#4e6b8a", light: "#bfcddb", coral: "#c98d87", sage: "#7f9f8a",
+                     mainFill: "rgba(78,107,138,.18)", grid: "#d6d8dc", label: "#55575d", labelOn: "#2b2c30" };
+
+  // 코멘트: 카드 안에서 펼치면 같은 줄 카드가 모두 늘어나므로, 오른쪽 서랍으로 띄움.
+  // 내용은 복사하지 않고 옮겼다가 닫을 때 제자리로 돌려놓음(AI 버튼 등 동작 유지). dialog 가 없으면 그냥 펼침
+  if (window.HTMLDialogElement) {
+    var drawer = document.createElement("dialog"), home = null;
+    drawer.className = "drawer";
+    drawer.setAttribute("aria-labelledby", "drawer-title");
+    drawer.innerHTML = '<div class="drawer-inner"><div class="drawer-head"><div><small>자소서 코멘트</small>' +
+      '<h3 id="drawer-title"></h3></div><button type="button" class="round-btn sm" aria-label="닫기">×</button></div>' +
+      '<div class="drawer-body"></div></div>';
+    document.body.appendChild(drawer);
+    var body = drawer.querySelector(".drawer-body");
+    drawer.querySelector("button").addEventListener("click", function () { drawer.close(); });
+    drawer.addEventListener("click", function (e) { if (e.target === drawer) drawer.close(); });  // 바깥(배경) 누르면 닫힘
+    drawer.addEventListener("close", function () {
+      if (home) { while (body.firstChild) home.appendChild(body.firstChild); home = null; }
+    });
+    document.querySelectorAll("details.cmt").forEach(function (d) {
+      d.querySelector("summary").addEventListener("click", function (e) {
+        e.preventDefault();
+        if (drawer.open) drawer.close();
+        var card = d.closest(".card"), title = card && card.querySelector("h3");
+        drawer.querySelector("h3").textContent = title ? title.textContent.trim() : "코멘트";
+        home = d;
+        Array.prototype.slice.call(d.children).forEach(function (c) { if (c.tagName !== "SUMMARY") body.appendChild(c); });
+        drawer.showModal();
+      });
+    });
+  }
+
+  // 첫 화면 시계 타일: 지금 시각 바늘 · 오늘 날짜(MM/DD)
+  document.querySelectorAll("[data-clock]").forEach(function (clock) {
+    function tick() {
+      var d = new Date();
+      clock.querySelector(".h").setAttribute("transform", "rotate(" + (d.getHours() % 12 * 30 + d.getMinutes() / 2) + " 50 50)");
+      clock.querySelector(".m").setAttribute("transform", "rotate(" + d.getMinutes() * 6 + " 50 50)");
+      document.querySelectorAll("[data-today]").forEach(function (el) {
+        el.textContent = String(d.getMonth() + 1).padStart(2, "0") + "/" + String(d.getDate()).padStart(2, "0");
+      });
+    }
+    tick();
+    setInterval(tick, 30000);
+  });
+
+  // 복사 버튼(data-copy="#대상")
+  document.querySelectorAll("[data-copy]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var el = document.querySelector(btn.dataset.copy);
+      if (!el || !navigator.clipboard) return;
+      navigator.clipboard.writeText(el.textContent.trim()).then(function () { btn.textContent = "복사됨"; });
+    });
+  });
 
   var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-  // 접속 인트로: 1.4초 뒤 사라지고, 같은 탭에서는 다시 안 보임
-  var splash = document.getElementById("splash");
-  if (splash) {
-    try { sessionStorage.setItem("growly-intro", "1"); } catch (e) {}
-    setTimeout(function () {
-      splash.classList.add("done");
-      setTimeout(function () { splash.remove(); }, 700);
-    }, reduce ? 0 : 1400);
-  }
+  // 알림 토스트: 5초 뒤(오류는 9초) 또는 누르면 사라짐
+  document.querySelectorAll(".toasts .flash").forEach(function (t) {
+    function hide() { t.classList.add("out"); setTimeout(function () { t.remove(); }, 450); }
+    t.addEventListener("click", hide);
+    setTimeout(hide, t.classList.contains("error") ? 9000 : 5000);
+  });
 
   // 화면에 들어오면 섹션이 말랑하게 떠오르고, 점수 링이 차오름
   var grids = document.querySelectorAll(".reveal .grid, .reveal .exp-grid");

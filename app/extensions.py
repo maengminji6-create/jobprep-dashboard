@@ -8,7 +8,4 @@ db = SQLAlchemy()
 migrate = Migrate()
 login_manager = LoginManager()
 csrf = CSRFProtect()
-
-login_manager.login_view = "auth.login"
-login_manager.login_message = "로그인이 필요합니다."
-login_manager.login_message_category = "info"
+# 로그인 화면은 없음: auth/routes.py 가 요청마다 주인 계정으로 자동 로그인

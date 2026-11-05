@@ -16,6 +16,8 @@ NAV_ITEMS = [
     ("strengths.index", "강점 연결", "✦", "strengths"),
     ("experiences.posting", "공고 매칭", "◎", "posting"),
     ("applications.index", "자소서 보관함", "▤", "applications"),
+    ("interview.index", "면접 준비", "◇", "interview"),
+    ("schedule.index", "취업 일정", "▦", "schedule"),
 ]
 
 
@@ -26,6 +28,12 @@ def _nav_key(endpoint: str) -> str:
         return "strengths"
     if endpoint.startswith("applications."):
         return "applications"
+    if endpoint.startswith("schedule."):
+        return "schedule"
+    if endpoint.startswith("interview."):
+        return "interview"
+    if endpoint.startswith("auth."):
+        return ""  # 내 공간: 메뉴에 없음
     return "experiences"
 
 
@@ -50,9 +58,11 @@ def create_app(config_name: str | None = None) -> Flask:
     from .auth import bp as auth_bp
     from .experiences import bp as experiences_bp
     from .applications import bp as applications_bp
+    from .interview import bp as interview_bp
+    from .schedule import bp as schedule_bp
     from .strengths import bp as strengths_bp
 
-    for bp in (auth_bp, experiences_bp, strengths_bp, applications_bp):
+    for bp in (auth_bp, experiences_bp, strengths_bp, applications_bp, interview_bp, schedule_bp):
         app.register_blueprint(bp)
 
     @app.route("/")
@@ -61,9 +71,6 @@ def create_app(config_name: str | None = None) -> Flask:
 
     from .core.errors import register_error_handlers
     register_error_handlers(app)
-
-    from .cli import register_cli
-    register_cli(app)
 
     if config_name == "dev":
         from .core.devreload import register_dev_reload
@@ -79,9 +86,12 @@ def create_app(config_name: str | None = None) -> Flask:
             dt = dt.replace(tzinfo=timezone.utc)
         return dt.astimezone().strftime(fmt)
 
+    from .core.text_format import text_blocks
+    app.add_template_filter(text_blocks, "blocks")
+
     @app.template_filter("highlight")
     def highlight(text, exp_words=None, str_words=None):
-        """형광펜: 내 경험과 겹치는 단어는 노랑(hl-exp), 내 강점 단서는 초록(hl-str), 둘 다면 hl-both.
+        """형광펜: 내 경험과 겹치는 단어는 파랑(hl-exp), 내 강점 단서는 초록(hl-str), 둘 다면 hl-both.
         먼저 HTML 이스케이프하므로 공고·경험 글에 태그가 있어도 안전합니다."""
         import re
 

@@ -16,6 +16,14 @@
   </details>
   <p class="muted" style="font-size:.78rem;margin-top:8px">9WAY·갤럽 강점 등 진단 결과지를 올리면 강점 이름과 설명을 찾아 내 경험과 연결해요. 새로 올리면 이전 결과지는 바뀌어요.</p>
 </form>
+<details class="box" style="margin-top:10px">
+  <summary>결과지 없이 강점 직접 입력</summary>
+  <form method="post" action="{{ url_for('strengths.manual') }}">
+    {{ csrf() }}
+    <textarea name="manual" placeholder="한 줄에 하나씩 · 예)&#10;신중함: 잘못될 일을 미리 살펴요&#10;효과성: 더 나은 방법을 찾아요&#10;(이름만 쉼표로 적어도 돼요: 신중함, 효과성, 주도)"></textarea>
+    <button class="btn sm" type="submit" style="margin-top:8px">강점 저장하고 연결하기</button>
+  </form>
+</details>
 {% endmacro %}
 
 {% block content %}
@@ -82,7 +90,7 @@
 {# ── 01 강점별 경험 ── #}
 <section class="block reveal">
   <div class="block-head"><div class="title"><span class="num">01</span><div><h2>강점이 드러난 내 경험</h2>
-    <p>강점마다 그 강점이 행동으로 나타난 경험을 찾았어요. 근거 단어를 보고 자소서 사례로 쓰세요.</p></div></div></div>
+    <p>강점마다 그 강점이 행동으로 드러난 내 문장을 찾아, 쓸 만한 직무와 자소서 소재로 이어 드려요. 근거가 없으면 '연결된 경험 없음'으로 알려 드려요.</p></div></div></div>
   {% if linked %}
   <div class="grid grid-3">
     {% for s in linked %}
@@ -90,16 +98,22 @@
       <div class="s-head"><span class="s-rank">TOP {{ s.rank or loop.index }}</span><h3>{{ s.name }}</h3></div>
       <p class="s-summary">{{ s.summary }}</p>
       {% if s.definition %}<p class="clip" style="max-width:none">{{ s.definition }}</p>{% endif %}
-      <h4>이 강점이 드러난 경험</h4>
+      <h4>강점을 증명하는 행동</h4>
       {% if s.matches %}
       <ul class="s-matches">
         {% for m in s.matches %}
-        <li><b>{{ m.title }}</b><span class="chips">{% for w in m.words %}<span class="chip">{{ w }}</span>{% endfor %}</span></li>
+        <li><a href="{{ url_for('experiences.edit', exp_id=m.id) }}"><b>{{ m.title }}</b></a>
+          {% if m.action %}<q class="s-action">{{ m.action|highlight(m.words) }}</q>{% endif %}
+          <span class="chips">{% for w in m.words %}<span class="chip">{{ w }}</span>{% endfor %}</span></li>
         {% endfor %}
       </ul>
+      {% if s.roles %}<h4>활용할 직무</h4><div class="chips">{% for r in s.roles %}<span class="chip on">{{ r }}</span>{% endfor %}</div>{% endif %}
+      {% if s.essay %}<h4>자소서 소재</h4>
+      <p class="s-essay"><b>{{ s.essay.question }}</b> 문항 · '{{ s.essay.title }}'{% if s.essay.action %}에서 “{{ s.essay.action|truncate(70, True, '…') }}”{% endif %}</p>{% endif %}
       <p class="s-tip">{{ s.tip }}</p>
       {% else %}
-      <p class="muted" style="font-size:.84rem">아직 이 강점과 이어지는 경험을 찾지 못했어요. 경험의 역할·느낀점에 이 강점이 드러난 행동을 적어 보세요.</p>
+      <p class="s-none"><span class="badge">연결된 경험 없음</span></p>
+      <p class="muted" style="font-size:.82rem">내 경험 기록에서 이 강점이 드러난 행동을 찾지 못했어요. {{ s.clues[:4]|join(' · ') }} 같은 행동이 있었다면 경험의 역할·행동(A) 칸에 적어 주세요.</p>
       {% endif %}
     </article>
     {% endfor %}

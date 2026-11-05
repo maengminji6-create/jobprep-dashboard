@@ -12,15 +12,82 @@
 {% block content %}
 <div class="page-head">
   <div>
-    <span class="eyebrow">My Growth Dashboard</span>
+    <span class="eyebrow">Dashboard</span>
     <h1>{{ current_user.name }}님의 경험 대시보드</h1>
-    <p>경험 {{ exps|length }}개 · 자격증·어학 {{ certs|length }}개{% if recs %} · 가장 잘 맞는 직무 <b>{{ recs[0].name }}</b>{% endif %}</p>
+    <p>쌓은 경험으로 나에게 맞는 직무를 찾아요.</p>
   </div>
-  <div class="row" style="gap:8px">
-    <a class="btn secondary" href="{{ url_for('experiences.report', role=role) }}" target="_blank" rel="noopener">⤓ 내 이력 PDF로 저장</a>
+  <div class="row" style="gap:10px">
+    <a class="btn secondary" href="#tab-file">⤒ 파일 올리기</a>
+    <a class="btn secondary" href="{{ url_for('experiences.report', role=role) }}" target="_blank" rel="noopener">⤓ 이력 PDF</a>
     <a class="btn" href="#tab-exp">＋ 경험 추가</a>
   </div>
 </div>
+
+{# 요약 타일: 시계·날짜 / 경험 수 / 자격증 수 / 추천 직무 #}
+<section class="overview">
+  <div class="card tile clock-tile">
+    <div class="clock">
+      <svg viewBox="0 0 100 100" data-clock aria-hidden="true">
+        <g class="ticks"><line x1="50" y1="9" x2="50" y2="14"/><line x1="91" y1="50" x2="86" y2="50"/><line x1="50" y1="91" x2="50" y2="86"/><line x1="9" y1="50" x2="14" y2="50"/></g>
+        <line class="hand h" x1="50" y1="50" x2="50" y2="29"/>
+        <line class="hand m" x1="50" y1="50" x2="50" y2="17"/>
+        <circle cx="50" cy="50" r="2.4"/>
+      </svg>
+    </div>
+    <div class="clock-date"><small>Today</small><b data-today>—</b></div>
+  </div>
+  <a class="card tile kpi" href="#browse">
+    <span class="kpi-label"><i class="dot sage"></i>경험</span>
+    <span class="kpi-value"><b>{{ exps|length }}</b>개</span>
+  </a>
+  <a class="card tile kpi" href="#certs">
+    <span class="kpi-label"><i class="dot rose"></i>자격증·어학</span>
+    <span class="kpi-value"><b>{{ certs|length }}</b>개</span>
+  </a>
+  <a class="card tile kpi" href="#recs">
+    <span class="kpi-label"><i class="dot slate"></i>추천 직무</span>
+    {% if recs %}<span class="kpi-value kpi-text"><b>{{ recs[0].name }}</b></span><small>적합도 {{ recs[0].score }}</small>
+    {% else %}<span class="kpi-value kpi-text"><b>—</b></span><small>이력을 넣으면 나타나요</small>{% endif %}
+  </a>
+</section>
+
+{# 취업 준비 현황: 다가오는 일정 · 최근 공고 · 지원 현황 · 핵심 역량 #}
+{% set sb = status_board %}
+<section class="board">
+  <article class="card tile board-card">
+    <div class="card-head"><h3>다가오는 일정</h3><a class="btn ghost sm" href="{{ url_for('schedule.index') }}">전체 →</a></div>
+    {% if sb.upcoming %}
+    <ul class="up-list">{% for e in sb.upcoming %}{% set left = e.d_day %}
+      <li class="{{ e.urgency }}"><a href="{{ url_for('schedule.index', m=e.date.strftime('%Y-%m')) }}">
+        <span class="dday {{ e.urgency }}">{{ '지남' if left < 0 else ('오늘' if left == 0 else 'D-' ~ left) }}</span>
+        <span><b>{{ e.title }}</b><small>{{ e.date.strftime('%m.%d') }} · {{ e.kind }}</small></span></a></li>
+    {% endfor %}</ul>
+    {% else %}<p class="board-empty">2주 안에 남은 일정이 없어요. 공고에 마감일을 넣으면 여기에 떠요.</p>{% endif %}
+  </article>
+  <article class="card tile board-card">
+    <div class="card-head"><h3>최근 분석한 공고</h3><a class="btn ghost sm" href="{{ url_for('experiences.posting') }}">공고 매칭 →</a></div>
+    {% if sb.recent %}
+    <ul class="use-list">{% for p in sb.recent %}{% set rq = ((p.result.get('requirements') or {}).get('summary') or {}).get('required') %}
+      <li><a href="{{ url_for('experiences.posting_detail', pa_id=p.id) }}">{{ p.company or p.title|truncate(24, True, '…') }}</a>
+        <small>{% if rq and rq.total %}필수 충족 {{ rq.met }}/{{ rq.total }}{% else %}요건 확인 전{% endif %}{% if p.status %} · {{ p.status }}{% endif %}</small></li>
+    {% endfor %}</ul>
+    {% else %}<p class="board-empty">아직 분석한 공고가 없어요. 링크·이미지·PDF·텍스트로 넣어 보세요.</p>{% endif %}
+  </article>
+  <article class="card tile board-card">
+    <div class="card-head"><h3>지원 현황</h3><small>저장한 공고 {{ sb.saved_total }}</small></div>
+    {% if sb.pipeline %}
+    <ul class="pipe">{% for s, n in sb.pipeline %}
+      <li><a href="{{ url_for('experiences.posting', st=s) }}#saved"><span>{{ s }}</span><b>{{ n }}</b></a></li>
+    {% endfor %}</ul>
+    {% else %}<p class="board-empty">공고를 ★ 저장하면 관심 공고 → 지원 → 합격까지 단계별로 모여요.</p>{% endif %}
+  </article>
+  <article class="card tile board-card">
+    <div class="card-head"><h3>핵심 보유 역량</h3><small>경험에 단 태그</small></div>
+    {% if sb.competencies %}
+    <div class="chips">{% for t, n in sb.competencies %}<span class="chip">{{ t }} <b>{{ n }}</b></span>{% endfor %}</div>
+    {% else %}<p class="board-empty">경험 화면에서 추천 역량을 태그로 달면 여기에 모여요.</p>{% endif %}
+  </article>
+</section>
 
 <nav class="section-nav" aria-label="섹션 바로가기">
   <a href="#recs"><b>01</b>추천 직무</a>
@@ -40,13 +107,15 @@
     <a class="card rec-card {{ 'on' if r.code == role }}" href="{{ url_for('experiences.index', role=r.code) }}#top3">
       <div class="rec-top">
         <span class="rec-rank">추천 {{ loop.index }}</span>
-        {{ ring(r.score, '적합도') }}
+        {% if r.enough %}{{ ring(r.score, '적합도') }}{% else %}<span class="low-data" title="연결된 경험이 적어 점수는 참고만 하세요">근거 부족</span>{% endif %}
       </div>
       <h3>{{ r.name }}</h3>
       <p class="muted" style="font-size:.8rem;margin-bottom:8px">{{ r.group_name }}</p>
       {% if r.experiences %}<p class="rec-why">근거 경험 · {{ r.experiences|join(', ') }}</p>{% endif %}
       {% if r.cert_bonus %}<p class="rec-why rec-cert">자격증 +{{ r.cert_bonus }}{% if r.certs %} · {{ r.certs|join(', ') }}{% endif %}</p>{% endif %}
-      <div class="chips">{% for k in r.keywords %}<span class="chip">{{ k }}</span>{% endfor %}</div>
+      {% if r.keywords %}<p class="rec-label">보유 역량</p><div class="chips">{% for k in r.keywords %}<span class="chip">{{ k }}</span>{% endfor %}</div>{% endif %}
+      {% if r.missing %}<p class="rec-label">부족한 역량</p><div class="chips">{% for k in r.missing %}<span class="chip gap">{{ k }}</span>{% endfor %}</div>{% endif %}
+      {% if r.activities %}<p class="rec-label">추천 활동</p><ul class="rec-acts">{% for a in r.activities %}<li>{{ a }}</li>{% endfor %}</ul>{% endif %}
       {% if r.code == role %}<span class="rec-now">지금 보는 직무</span>{% endif %}
     </a>
     {% endfor %}
@@ -256,7 +325,7 @@ new Chart(document.getElementById("radarChart"), {
           pointRadius: C.radar_values.map((_, i) => i === sel ? 7 : 4) }] },
   options: { maintainAspectRatio: false,
     scales: { r: { min: 0, max: 100, ticks: { display: false, stepSize: 20 }, grid: { color: P.grid }, angleLines: { color: P.grid },
-      pointLabels: { font: (ctx) => ({ size: 11, weight: ctx.index === sel ? "700" : "400" }),
+      pointLabels: { padding: 8, font: (ctx) => ({ size: 12, weight: ctx.index === sel ? "700" : "500" }),
                      color: (ctx) => ctx.index === sel ? P.labelOn : P.label } } },
     plugins: { legend: { display: false } } }
 });
@@ -266,7 +335,7 @@ new Chart(document.getElementById("barChart"), {
     { label: "직무 적합도", data: C.bar_fit, backgroundColor: P.main, barPercentage: .8, categoryPercentage: .7 },
     { label: "강점", data: C.bar_strength, backgroundColor: P.light, barPercentage: .8, categoryPercentage: .7 } ] },
   options: { maintainAspectRatio: false, indexAxis: "y",
-    scales: { x: { min: 0, max: 100, grid: { color: P.grid } }, y: { grid: { display: false }, ticks: { font: { size: 11 } } } },
+    scales: { x: { min: 0, max: 100, grid: { color: P.grid } }, y: { grid: { display: false }, ticks: { font: { size: 12 }, color: P.label } } },
     plugins: { legend: { position: "top", align: "end" } } }
 });
 </script>

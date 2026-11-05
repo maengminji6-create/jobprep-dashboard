@@ -1,5 +1,6 @@
 """환경별 설정. 코드에는 비밀값을 쓰지 않고 전부 환경변수(.env)에서 읽습니다."""
 import os
+from datetime import timedelta
 
 BASE_DIR = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
 INSTANCE_DIR = os.path.join(BASE_DIR, "instance")
@@ -21,8 +22,11 @@ class BaseConfig:
     SQLALCHEMY_ENGINE_OPTIONS = {"pool_pre_ping": True}
     MAX_CONTENT_LENGTH = int(os.environ.get("MAX_UPLOAD_MB", 10)) * 1024 * 1024
 
-    # 회원가입 허용(1) / 막기(0). 배포 후 내 계정을 만든 다음 0 으로 바꾸면 다른 사람이 가입할 수 없어요.
-    ALLOW_SIGNUP = os.environ.get("ALLOW_SIGNUP", "1") == "1"
+    # 로그인 없이 브라우저마다 개인 공간: 이 쿠키로 기억(접속할 때마다 기한 연장, 브라우저 최대치 400일)
+    REMEMBER_COOKIE_DURATION = timedelta(days=400)
+    REMEMBER_COOKIE_REFRESH_EACH_REQUEST = True
+    REMEMBER_COOKIE_SAMESITE = "Lax"
+    OWNER_EMAIL = ""  # 배포에서는 절대 쓰지 않음(쓰면 모든 방문자가 그 계정으로 들어감)
 
     # AI 코멘트(선택, OpenAI). 키가 없으면 규칙 기반 기본 코멘트만 보여 줍니다.
     OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
@@ -32,6 +36,8 @@ class BaseConfig:
 class DevConfig(BaseConfig):
     DEBUG = True
     SQLALCHEMY_DATABASE_URI = _db_url("sqlite:///" + os.path.join(INSTANCE_DIR, "dev.db"))
+    # 로컬 전용: 이 이메일 계정으로 바로 들어감. 비우면 브라우저마다 개인 공간(배포와 같음)
+    OWNER_EMAIL = (os.environ.get("OWNER_EMAIL") or "").strip().lower()
 
 
 class TestConfig(BaseConfig):
