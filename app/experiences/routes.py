@@ -58,6 +58,20 @@ def _cert_views(certs, role: str) -> list[dict]:
     return sorted(views, key=lambda v: v["rel"], reverse=True)
 
 
+def _status_board(exps) -> dict:
+    """첫 화면 '취업 준비 현황': 다가오는 일정 · 최근 분석한 공고 · 지원 현황 · 핵심 보유 역량."""
+    from collections import Counter
+
+    from ..core.job_status import STATUSES
+    from ..schedule.services import upcoming
+    saved = owned(PostingAnalysis).filter(PostingAnalysis.is_saved.is_(True)).all()
+    counts = Counter(p.status for p in saved if p.status)
+    recent = owned(PostingAnalysis).order_by(PostingAnalysis.created_at.desc()).limit(3).all()
+    tags = Counter(t for e in exps for t in e.competency_list)
+    return {"upcoming": upcoming()[:4], "recent": recent, "pipeline": [(s, counts[s]) for s in STATUSES if counts[s]],
+            "saved_total": len(saved), "competencies": tags.most_common(8)}
+
+
 @bp.route("/")
 @login_required
 def index():
@@ -93,6 +107,7 @@ def index():
     cat_counts = {c: n for c, n in cat_counts.items() if n}
     snapshots = owned(Snapshot).order_by(Snapshot.created_at.desc()).all()
     return render_template("experiences/index.html", exps=exps, analyses=by_id, top3=top3, excluded=excluded,
+                           status_board=_status_board(exps),
                            role=role, group=group, role_name=role_name, group_name=GROUP_BY_CODE[group]["name"],
                            groups=ROLE_GROUPS, roles=role_options(), chart=chart, uploads=uploads,
                            categories=EXP_CATEGORIES, comments=comments, certs=_cert_views(certs, role),

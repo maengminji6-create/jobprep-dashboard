@@ -15,7 +15,7 @@
   }
   // 차트 공통 색: 슬레이트 블루 · 연한 슬레이트 · 더스티 로즈 · 세이지 — app.css 토큰과 맞춤
   window.PALETTE = { main: "#4e6b8a", light: "#bfcddb", coral: "#c98d87", sage: "#7f9f8a",
-                     mainFill: "rgba(78,107,138,.18)", grid: "#d6d8dc", label: "#5c5e64", labelOn: "#2b2c30" };
+                     mainFill: "rgba(78,107,138,.18)", grid: "#d6d8dc", label: "#55575d", labelOn: "#2b2c30" };
 
   // 코멘트: 카드 안에서 펼치면 같은 줄 카드가 모두 늘어나므로, 오른쪽 서랍으로 띄움.
   // 내용은 복사하지 않고 옮겼다가 닫을 때 제자리로 돌려놓음(AI 버튼 등 동작 유지). dialog 가 없으면 그냥 펼침

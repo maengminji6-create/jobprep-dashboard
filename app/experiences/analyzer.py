@@ -141,7 +141,35 @@ def recommend_roles(analyses: list[dict], n: int = 3, certs: list | None = None)
         cert_names = [c.name for c, ev in sorted(evals, key=lambda x: x[1]["roles"].get(code, 0), reverse=True)
                       if ev["roles"].get(code, 0) >= 50][:2]
         role = next(r for r in TRADE_ROLES if r["code"] == code)
+        gaps = _role_gaps(code, role, analyses)
         recs.append({"code": code, "name": role["name"], "group_name": GROUP_BY_CODE[role["group"]]["name"],
                      "score": score, "experiences": [a["title"] for a in backing], "keywords": words[:5],
-                     "certs": cert_names, "cert_bonus": cert_bonus([ev for _, ev in evals], code)})
+                     "certs": cert_names, "cert_bonus": cert_bonus([ev for _, ev in evals], code),
+                     "missing": gaps, "activities": _role_activities(code, gaps, certs),
+                     # 근거 경험이 약하면 점수를 앞세우지 않고 '근거 부족'으로 보여 줌
+                     "enough": score >= 20 and bool(backing)})
     return recs
+
+
+def _role_gaps(code: str, role: dict, analyses: list[dict], n: int = 3) -> list[str]:
+    """그 직무의 핵심 키워드(가중치 2 이상, 한국어) 가운데 내 경험 어디에도 없는 것."""
+    import re
+    have = {w for a in analyses for w in a["roles"][code]["hits"]}
+    core = sorted(((kw, w) for kw, w in role["keywords"].items() if w >= 2 and re.match(r"[가-힣]", kw)),
+                  key=lambda kv: kv[1], reverse=True)
+    return [kw for kw, _w in core if kw not in have][:n]
+
+
+def _role_activities(code: str, gaps: list[str], certs: list) -> list[str]:
+    """그 직무를 준비할 활동: 관련도 높은데 아직 없는 자격증 + 부족한 역량을 경험으로 남기기."""
+    from ..core.certificates import CERT_RULES
+    have = " ".join(c.name for c in certs).replace(" ", "")
+    out = []
+    for names, roles, _why in CERT_RULES:
+        if roles.get(code, 0) >= 80 and not any(n.replace(" ", "") in have for n in names):
+            out.append(f"{names[0]} 취득 준비")
+        if len(out) == 2:
+            break
+    if gaps:
+        out.append(f"'{', '.join(gaps[:2])}' 관련 활동을 했다면 경험에 STAR로 기록하기")
+    return out

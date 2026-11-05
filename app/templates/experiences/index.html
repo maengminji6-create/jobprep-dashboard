@@ -51,6 +51,44 @@
   </a>
 </section>
 
+{# 취업 준비 현황: 다가오는 일정 · 최근 공고 · 지원 현황 · 핵심 역량 #}
+{% set sb = status_board %}
+<section class="board">
+  <article class="card tile board-card">
+    <div class="card-head"><h3>다가오는 일정</h3><a class="btn ghost sm" href="{{ url_for('schedule.index') }}">전체 →</a></div>
+    {% if sb.upcoming %}
+    <ul class="up-list">{% for e in sb.upcoming %}{% set left = e.d_day %}
+      <li class="{{ e.urgency }}"><a href="{{ url_for('schedule.index', m=e.date.strftime('%Y-%m')) }}">
+        <span class="dday {{ e.urgency }}">{{ '지남' if left < 0 else ('오늘' if left == 0 else 'D-' ~ left) }}</span>
+        <span><b>{{ e.title }}</b><small>{{ e.date.strftime('%m.%d') }} · {{ e.kind }}</small></span></a></li>
+    {% endfor %}</ul>
+    {% else %}<p class="board-empty">2주 안에 남은 일정이 없어요. 공고에 마감일을 넣으면 여기에 떠요.</p>{% endif %}
+  </article>
+  <article class="card tile board-card">
+    <div class="card-head"><h3>최근 분석한 공고</h3><a class="btn ghost sm" href="{{ url_for('experiences.posting') }}">공고 매칭 →</a></div>
+    {% if sb.recent %}
+    <ul class="use-list">{% for p in sb.recent %}{% set rq = ((p.result.get('requirements') or {}).get('summary') or {}).get('required') %}
+      <li><a href="{{ url_for('experiences.posting_detail', pa_id=p.id) }}">{{ p.company or p.title|truncate(24, True, '…') }}</a>
+        <small>{% if rq and rq.total %}필수 충족 {{ rq.met }}/{{ rq.total }}{% else %}요건 확인 전{% endif %}{% if p.status %} · {{ p.status }}{% endif %}</small></li>
+    {% endfor %}</ul>
+    {% else %}<p class="board-empty">아직 분석한 공고가 없어요. 링크·이미지·PDF·텍스트로 넣어 보세요.</p>{% endif %}
+  </article>
+  <article class="card tile board-card">
+    <div class="card-head"><h3>지원 현황</h3><small>저장한 공고 {{ sb.saved_total }}</small></div>
+    {% if sb.pipeline %}
+    <ul class="pipe">{% for s, n in sb.pipeline %}
+      <li><a href="{{ url_for('experiences.posting', st=s) }}#saved"><span>{{ s }}</span><b>{{ n }}</b></a></li>
+    {% endfor %}</ul>
+    {% else %}<p class="board-empty">공고를 ★ 저장하면 관심 공고 → 지원 → 합격까지 단계별로 모여요.</p>{% endif %}
+  </article>
+  <article class="card tile board-card">
+    <div class="card-head"><h3>핵심 보유 역량</h3><small>경험에 단 태그</small></div>
+    {% if sb.competencies %}
+    <div class="chips">{% for t, n in sb.competencies %}<span class="chip">{{ t }} <b>{{ n }}</b></span>{% endfor %}</div>
+    {% else %}<p class="board-empty">경험 화면에서 추천 역량을 태그로 달면 여기에 모여요.</p>{% endif %}
+  </article>
+</section>
+
 <nav class="section-nav" aria-label="섹션 바로가기">
   <a href="#recs"><b>01</b>추천 직무</a>
   <a href="#top3"><b>02</b>TOP 3</a>
@@ -69,13 +107,15 @@
     <a class="card rec-card {{ 'on' if r.code == role }}" href="{{ url_for('experiences.index', role=r.code) }}#top3">
       <div class="rec-top">
         <span class="rec-rank">추천 {{ loop.index }}</span>
-        {{ ring(r.score, '적합도') }}
+        {% if r.enough %}{{ ring(r.score, '적합도') }}{% else %}<span class="low-data" title="연결된 경험이 적어 점수는 참고만 하세요">근거 부족</span>{% endif %}
       </div>
       <h3>{{ r.name }}</h3>
       <p class="muted" style="font-size:.8rem;margin-bottom:8px">{{ r.group_name }}</p>
       {% if r.experiences %}<p class="rec-why">근거 경험 · {{ r.experiences|join(', ') }}</p>{% endif %}
       {% if r.cert_bonus %}<p class="rec-why rec-cert">자격증 +{{ r.cert_bonus }}{% if r.certs %} · {{ r.certs|join(', ') }}{% endif %}</p>{% endif %}
-      <div class="chips">{% for k in r.keywords %}<span class="chip">{{ k }}</span>{% endfor %}</div>
+      {% if r.keywords %}<p class="rec-label">보유 역량</p><div class="chips">{% for k in r.keywords %}<span class="chip">{{ k }}</span>{% endfor %}</div>{% endif %}
+      {% if r.missing %}<p class="rec-label">부족한 역량</p><div class="chips">{% for k in r.missing %}<span class="chip gap">{{ k }}</span>{% endfor %}</div>{% endif %}
+      {% if r.activities %}<p class="rec-label">추천 활동</p><ul class="rec-acts">{% for a in r.activities %}<li>{{ a }}</li>{% endfor %}</ul>{% endif %}
       {% if r.code == role %}<span class="rec-now">지금 보는 직무</span>{% endif %}
     </a>
     {% endfor %}
