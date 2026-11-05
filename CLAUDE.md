@@ -2,7 +2,7 @@
 
 ## 프로젝트
 무역업 취준생용 경험정리 분석 도구(GROWLY). 앱 팩토리 + 블루프린트 구조.
-화면은 경험 분석(`experiences.index`), 강점 연결(`strengths.index`), 공고 매칭(`experiences.posting`), 자소서 보관함(`applications.index`), 이력 PDF(`experiences.report`)다. 다른 탭(홈 뉴스·스케줄 등)은 의도적으로 지웠다.
+화면은 경험 분석(`experiences.index`), 강점 연결(`strengths.index`), 공고 매칭(`experiences.posting`), 자소서 보관함(`applications.index`), 취업 일정(`schedule.index`), 이력 PDF(`experiences.report`)다. 홈 뉴스 탭은 의도적으로 지웠다.
 로컬은 SQLite(`instance/dev.db`), 배포는 PostgreSQL(`DATABASE_URL`). DB 종류에 의존하는 코드는 쓰지 않는다.
 
 ## 구조 규칙

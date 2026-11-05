@@ -26,3 +26,25 @@ def test_user_cannot_access_others_data(app, client):
 
     page = client.get("/experiences/").get_data(as_text=True)
     assert "비밀" not in page
+
+
+def test_user_cannot_touch_others_schedule(app, client):
+    from datetime import date
+
+    from app.schedule.models import ScheduleEvent
+    a = make_user("a@test.com")
+    b = make_user("b@test.com")
+    ev = ScheduleEvent(user_id=b.id, title="B의 면접", date=date.today())
+    pb = PostingAnalysis(user_id=b.id, title="B의 공고", result_json="{}", deadline=date.today())
+    db.session.add_all([ev, pb])
+    db.session.commit()
+    login(client, a.email)
+    assert client.post(f"/schedule/{ev.id}/edit", data={"title": "x", "date": "2026-01-01"}).status_code == 404
+    assert client.post(f"/schedule/{ev.id}/check", data={"all": "1"}).status_code == 404
+    assert client.post(f"/schedule/{ev.id}/delete").status_code == 404
+    assert client.get(f"/schedule/?edit={ev.id}").status_code == 404
+    assert client.post(f"/schedule/from-posting/{pb.id}").status_code == 404
+    # 남의 공고를 내 일정에 연결할 수 없음
+    assert client.post("/schedule/new", data={"title": "x", "date": "2026-01-01", "posting_id": pb.id}).status_code == 404
+    page = client.get("/schedule/").get_data(as_text=True)
+    assert "B의 면접" not in page and "B의 공고" not in page

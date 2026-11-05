@@ -28,3 +28,13 @@ def urgency(deadline: date | None, status: str = "", today: date | None = None) 
     if left < 0:
         return "over"
     return "soon" if left <= 3 else ("week" if left <= 7 else "")
+
+
+def parse_date(value: str | None) -> date | None:
+    """'2026-11-03' · '2026.11.03' · '2026/11/3' → date. 비었거나 틀리면 None."""
+    import re
+    m = re.match(r"^\s*(20\d{2})\s*[.\-/]\s*(\d{1,2})\s*[.\-/]\s*(\d{1,2})", value or "")
+    try:
+        return date(int(m.group(1)), int(m.group(2)), int(m.group(3))) if m else None
+    except ValueError:
+        return None

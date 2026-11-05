@@ -237,6 +237,10 @@
           <button class="btn ghost sm" type="submit">저장</button></label>
         {{ dday(analysis) }}
       </form>
+      {% if analysis.deadline %}
+      <form method="post" action="{{ url_for('schedule.from_posting', pa_id=analysis.id) }}" style="margin-top:8px">{{ csrf() }}
+        <button class="btn ghost sm" type="submit">▦ 일정에 준비 체크리스트 만들기</button></form>
+      {% endif %}
       {% if r.extract_warnings %}
       <details class="check-box" style="margin-top:12px"><summary><b>원문 확인 필요 {{ r.extract_warnings|length }}</b> · 읽기가 불완전하면 매칭도 부정확해요</summary>
         <ul>{% for w in r.extract_warnings %}<li>{{ w }}</li>{% endfor %}</ul>

@@ -656,14 +656,8 @@ def posting():
 
 
 def _parse_date(value: str):
-    """'2026-11-03' · '2026.11.03' → date. 비었거나 틀리면 None."""
-    import re
-    from datetime import date
-    m = re.match(r"^\s*(20\d{2})\s*[.\-/]\s*(\d{1,2})\s*[.\-/]\s*(\d{1,2})", value or "")
-    try:
-        return date(int(m.group(1)), int(m.group(2)), int(m.group(3))) if m else None
-    except ValueError:
-        return None
+    from ..core.job_status import parse_date
+    return parse_date(value)
 
 
 def _save_analysis(text, url, company, title, image_urls, vision, warnings):

@@ -16,6 +16,7 @@ NAV_ITEMS = [
     ("strengths.index", "강점 연결", "✦", "strengths"),
     ("experiences.posting", "공고 매칭", "◎", "posting"),
     ("applications.index", "자소서 보관함", "▤", "applications"),
+    ("schedule.index", "취업 일정", "▦", "schedule"),
 ]
 
 
@@ -26,6 +27,8 @@ def _nav_key(endpoint: str) -> str:
         return "strengths"
     if endpoint.startswith("applications."):
         return "applications"
+    if endpoint.startswith("schedule."):
+        return "schedule"
     if endpoint.startswith("auth."):
         return ""  # 내 공간: 메뉴에 없음
     return "experiences"
@@ -52,9 +55,10 @@ def create_app(config_name: str | None = None) -> Flask:
     from .auth import bp as auth_bp
     from .experiences import bp as experiences_bp
     from .applications import bp as applications_bp
+    from .schedule import bp as schedule_bp
     from .strengths import bp as strengths_bp
 
-    for bp in (auth_bp, experiences_bp, strengths_bp, applications_bp):
+    for bp in (auth_bp, experiences_bp, strengths_bp, applications_bp, schedule_bp):
         app.register_blueprint(bp)
 
     @app.route("/")
