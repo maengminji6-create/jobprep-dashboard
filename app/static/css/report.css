@@ -72,6 +72,9 @@
 .r-foot { text-align: center; color: var(--r-sub); font-size: .72rem; margin-top: 40px; font-family: var(--font-display);
   letter-spacing: .34em; }
 
+.r-qa h2 { font-size: 1.02rem; line-height: 1.55; border-bottom-width: 1px; }
+.r-qa .r-text p { margin-bottom: 12px; }
+
 @media print {
   @page { size: A4; margin: 18mm 17mm 18mm; }
   .no-print { display: none !important; }

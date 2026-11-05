@@ -98,7 +98,7 @@ def experience_usage(exp) -> dict:
     essays = []
     for rec in owned(ApplicationRecord).order_by(ApplicationRecord.created_at.desc()).all():
         for item in rec.qa:
-            if exp in used_experiences(item.get("a", ""), [exp]):
+            if exp in used_experiences(item.get("a", ""), [exp], item.get("exps")):
                 essays.append({"id": rec.id, "company": rec.company, "question": item.get("q") or "문항"})
     return {"postings": postings, "essays": essays, "total": len(postings) + len(essays)}
 

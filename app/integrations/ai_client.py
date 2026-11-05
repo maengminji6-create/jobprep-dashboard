@@ -405,3 +405,35 @@ def structure_experience(exp, role_name: str) -> dict:
     data["competencies"] = [c for c in data.get("competencies", []) if c.get("name")][:5]
     data["questions"] = [q for q in data.get("questions", []) if q][:4]
     return data
+
+
+# ── 자소서 답변 초안(고른 경험만 근거) ─────────────────────────────────────
+
+ANSWER_SCHEMA = {
+    "type": "object",
+    "properties": {"answer": {"type": "string"}, "missing": {"type": "array", "items": {"type": "string"}}},
+    "required": ["answer", "missing"],
+    "additionalProperties": False,
+}
+
+ANSWER_PROMPT = """당신은 지원자가 직접 겪은 경험만으로 자기소개서 답변 초안을 쓰는 코치입니다.
+
+원칙(가장 중요):
+- 아래 '경험'에 적힌 사실만 씁니다. 적혀 있지 않은 성과·숫자·기간·인원·기관·직책·수상은 절대 만들지 않습니다.
+- 경험에 결과가 없으면 결과를 꾸며 내지 말고 '(결과를 적어 주세요)'처럼 괄호로 자리를 남기고 missing 에 적습니다.
+- 문항이 묻는 것에 답하는 구조로: 첫 문장에 핵심 → 상황·과제 → 내가 한 행동 → 결과·배운 점 → 지원 직무와 연결.
+- 글자 수 제한이 있으면 그 안에서 씁니다(공백 포함). 과장된 수식어(최고의, 완벽한 등)는 쓰지 않습니다.
+- 공고 요약이 있으면 공고가 원하는 역량과 연결하되, 경험에 없는 역량을 있다고 쓰지 않습니다.
+- 한국어, 지원자 1인칭(저는)."""
+
+
+def draft_answer(question: str, limit: str, exps: list, posting_text: str, role_name: str) -> dict:
+    """문항 + 고른 경험(최대 3개) → {"answer": 초안, "missing": 사용자가 더 채울 것}. 화면에서 고친 뒤 저장."""
+    blocks = [_experience_block(e, role_name, []) for e in exps[:3]]
+    prompt = PARA.join([
+        f"문항: {question}", f"글자 수 제한: {limit or '없음'}", f"지원 직무: {role_name}",
+        f"공고 요약(참고): {(posting_text or '')[:2500]}",
+        "경험(이 내용만 근거로):", json.dumps(blocks, ensure_ascii=False, indent=1)])
+    data = _call(ANSWER_PROMPT, prompt, ANSWER_SCHEMA, "essay_draft")
+    data["missing"] = [m for m in data.get("missing", []) if m][:5]
+    return data

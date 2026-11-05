@@ -470,3 +470,21 @@ dialog.drawer::backdrop { background: rgba(43, 44, 48, .2); backdrop-filter: blu
 .s-action { display: block; margin: 4px 0 6px; font-size: .82rem; line-height: 1.6; color: var(--text); quotes: "“" "”"; }
 .s-essay { font-size: .84rem; margin: 0 0 4px; color: var(--text); }
 .s-none { margin: 4px 0 6px; }
+
+/* ── 자소서 작성 보조: 경험 추천 · AI 초안 · 이전 버전 ─────────────────────── */
+.qa-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 4px 0 10px; }
+.qa-picked { font-size: .78rem; }
+.qa-panel { margin: 0 0 12px; padding: 12px 14px; border-radius: 16px; background: var(--bg); box-shadow: var(--inset-sm); font-size: .84rem; }
+.qa-panel p { margin: 0 0 6px; }
+.qa-type { font-size: .8rem; color: var(--muted); }
+.qa-sug { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--border); }
+.qa-sug small { display: block; color: var(--muted); font-size: .76rem; margin-top: 2px; }
+.qa-sug-btns { display: flex; gap: 4px; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; }
+.qa-notes { margin: 4px 0 0; padding-left: 18px; color: var(--tone-700); font-size: .8rem; }
+.ver-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.ver-list li { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+.ver-list li:last-child { border-bottom: 0; padding-bottom: 0; }
+.ver-list details { flex: 1; min-width: 0; font-size: .86rem; }
+.ver-list summary { cursor: pointer; }
+.ver-qa { margin: 10px 0 0; }
+.ver-qa p { font-size: .84rem; color: var(--text); margin-top: 4px; }

@@ -1,0 +1,40 @@
+{% from "components/logo.html" import logo %}
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ rec.company }} 자기소개서 · CAIRN</title>
+  <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='img/logo.svg') }}">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500&display=swap">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/components.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/report.css') }}">
+</head>
+<body class="report-body">
+<div class="report-bar no-print">
+  <span>인쇄 창에서 <b>대상: PDF로 저장</b>을 고르세요. '머리글과 바닥글'을 끄면 더 깔끔해요.</span>
+  <button class="btn" type="button" onclick="window.print()">⤓ PDF로 저장</button>
+  <a class="btn secondary" href="{{ url_for('applications.detail', rec_id=rec.id) }}">← 지원 기록</a>
+</div>
+<main class="report">
+  <header class="report-head">
+    {{ logo(26, 'rep') }}
+    <h1>{{ rec.company }} 자기소개서</h1>
+    <p>{{ rec.position or '직무 미입력' }}{% if rec.role_code in role_map %} · {{ role_map[rec.role_code].name }}{% endif %}
+      · {{ today.strftime('%Y.%m.%d') }} 기준 · 문항 {{ rec.qa|length }}개 · 총 {{ '{:,}'.format(rec.total_chars) }}자</p>
+  </header>
+  {% for item in rec.qa %}
+  <section class="r-sec r-qa">
+    {% set n = item.a|replace('\n', '')|length %}
+    <h2>Q{{ loop.index }}. {{ item.q or '(문항 없음)' }} <small>{{ '{:,}'.format(n) }}자{% if item.limit %} / {{ item.limit }}자{% endif %}</small></h2>
+    <div class="r-text">{% for para in (item.a or '').split('\n\n') if para.strip() %}<p>{{ para|replace('\n', ' ') }}</p>{% endfor %}</div>
+  </section>
+  {% else %}
+  <p class="muted">저장한 문항이 없어요.</p>
+  {% endfor %}
+  <footer class="r-foot">CAIRN</footer>
+</main>
+</body>
+</html>

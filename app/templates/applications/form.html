@@ -9,7 +9,8 @@
   <a class="btn secondary" href="{{ url_for('applications.detail', rec_id=rec.id) if rec else url_for('applications.index') }}">← 돌아가기</a>
 </div>
 
-<form method="post" action="{{ url_for('applications.edit', rec_id=rec.id) if rec else url_for('applications.new') }}">
+<form method="post" action="{{ url_for('applications.edit', rec_id=rec.id) if rec else url_for('applications.new') }}" id="appForm"
+      data-suggest="{{ url_for('applications.suggest') }}" data-draft="{{ url_for('applications.draft') }}">
   {{ csrf() }}
   <section class="block">
     <div class="block-head"><div class="title"><span class="num">01</span><div><h2>지원 정보</h2><p>어느 회사, 어떤 직무에 언제 냈는지</p></div></div></div>
@@ -44,7 +45,7 @@
   </section>
 
   <section class="block">
-    <div class="block-head"><div class="title"><span class="num">03</span><div><h2>자기소개서</h2><p>문항마다 글자 수가 자동으로 세져요(공백 포함·줄바꿈 제외)</p></div></div>
+    <div class="block-head"><div class="title"><span class="num">03</span><div><h2>자기소개서</h2><p>문항을 적고 '경험 추천'을 누르면 문항·공고에 맞는 내 경험과 STAR 뼈대를 보여 드려요. 글자 수는 자동으로 세져요(공백 포함·줄바꿈 제외).</p></div></div>
       <button class="btn secondary sm" type="button" id="addQa">＋ 문항 추가</button></div>
     <div id="qaList">
       {% for item in (qa if qa else [{'q': '', 'limit': '', 'a': ''}]) %}
@@ -54,7 +55,14 @@
           <div class="field" style="flex:0 1 120px"><label>글자 수 제한</label><input type="text" name="limit" value="{{ item.limit }}" placeholder="700" inputmode="numeric"></div>
           <div class="field" style="flex:0 0 auto"><button class="btn ghost sm qa-remove" type="button">문항 삭제</button></div>
         </div>
-        <textarea name="a" class="qa-answer" style="min-height:200px" placeholder="제출한 답변을 붙여 넣으세요">{{ item.a }}</textarea>
+        <input type="hidden" name="exps" value="{{ (item.exps or [])|join(',') }}">
+        <div class="qa-tools">
+          <button class="btn secondary sm qa-suggest" type="button">이 문항에 맞는 경험 추천</button>
+          {% if ai_enabled %}<button class="btn secondary sm qa-draft" type="button">✦ AI 초안</button>{% endif %}
+          <span class="qa-picked muted"></span>
+        </div>
+        <div class="qa-panel" hidden></div>
+        <textarea name="a" class="qa-answer" style="min-height:200px" placeholder="답변을 쓰거나 붙여 넣으세요. '경험 추천'에서 STAR 뼈대를 넣을 수 있어요.">{{ item.a }}</textarea>
         <p class="qa-count"><b>0</b>자</p>
       </div>
       {% endfor %}
@@ -75,7 +83,75 @@
     out.innerHTML = "<b>" + n.toLocaleString() + "</b>자" + (lim ? " / " + lim.toLocaleString() + "자" : "");
     out.classList.toggle("over", !!lim && n > lim);
   }
+  var form = document.getElementById("appForm");
+  function esc(s) { var d = document.createElement("div"); d.textContent = s == null ? "" : s; return d.innerHTML; }
+  function picked(item) { var v = item.querySelector("input[name=exps]").value; return v ? v.split(",") : []; }
+  function setPicked(item, ids, titles) {
+    item.querySelector("input[name=exps]").value = ids.join(",");
+    var span = item.querySelector(".qa-picked");
+    if (titles) span.textContent = ids.length ? "쓴 경험 " + ids.length + "개" : "";
+  }
+  function addPick(item, id) { var ids = picked(item); if (ids.indexOf(String(id)) < 0) ids.push(String(id)); setPicked(item, ids, true); }
+  function putText(item, text) {
+    var a = item.querySelector(".qa-answer");
+    a.value = a.value.trim() ? a.value.replace(/\s+$/, "") + "\n\n" + text : text;
+    a.dispatchEvent(new Event("input")); a.focus();
+  }
+  // 문항에 맞는 경험 추천: 문항 유형 + 고른 공고의 요건 충족 근거로 고르고, STAR 뼈대(내가 쓴 글)를 넣을 수 있음
+  function suggest(item) {
+    var panel = item.querySelector(".qa-panel"), q = item.querySelector("input[name=q]").value;
+    var pid = form.querySelector("select[name=posting_id]").value;
+    panel.hidden = false; panel.innerHTML = '<p class="muted">추천을 찾는 중…</p>';
+    fetch(form.dataset.suggest + "?q=" + encodeURIComponent(q) + "&posting_id=" + encodeURIComponent(pid), {credentials: "same-origin"})
+      .then(function (r) { return r.json(); }).then(function (d) {
+        if (!d.items.length) { panel.innerHTML = '<p class="muted">\'' + esc(d.type) + '\' 문항에 근거가 있는 경험을 찾지 못했어요. 경험에 STAR를 채우거나 공고를 연결해 보세요.</p>'; return; }
+        panel.innerHTML = '<p class="qa-type">문항 유형 · <b>' + esc(d.type) + '</b></p>' + d.items.map(function (x) {
+          return '<div class="qa-sug"><div><b>' + esc(x.title) + '</b><small>' + x.reasons.map(esc).join(' · ') + '</small></div>' +
+            '<div class="qa-sug-btns"><button type="button" class="btn ghost sm" data-outline="' + x.id + '">STAR 뼈대 넣기</button>' +
+            '<button type="button" class="btn ghost sm" data-pick="' + x.id + '">이 경험 쓰기</button></div>' +
+            '<template>' + esc(x.outline) + '</template></div>';
+        }).join("");
+        panel.querySelectorAll("[data-outline]").forEach(function (b) {
+          b.addEventListener("click", function () {
+            var tpl = b.closest(".qa-sug").querySelector("template");
+            var div = document.createElement("div"); div.innerHTML = tpl.innerHTML;
+            putText(item, div.textContent); addPick(item, b.dataset.outline);
+          });
+        });
+        panel.querySelectorAll("[data-pick]").forEach(function (b) {
+          b.addEventListener("click", function () { addPick(item, b.dataset.pick); b.textContent = "✓ 쓴 경험"; });
+        });
+      }).catch(function () { panel.innerHTML = '<p class="muted">추천을 불러오지 못했어요. 잠시 뒤 다시 눌러 주세요.</p>'; });
+  }
+  // ✦ AI 초안: 고른 경험만 근거로. 원문에 없는 숫자가 든 문장은 서버가 빼고 알려 줌
+  function draft(item, btn) {
+    var ids = picked(item), panel = item.querySelector(".qa-panel");
+    panel.hidden = false;
+    if (!ids.length) { panel.innerHTML = '<p class="muted">먼저 \'경험 추천\'에서 이 문항에 쓸 경험을 골라 주세요(이 경험 쓰기).</p>'; return; }
+    var a = item.querySelector(".qa-answer");
+    if (a.value.trim() && !confirm("지금 쓴 답변 아래에 AI 초안을 덧붙일까요?")) return;
+    var fd = new FormData();
+    fd.append("csrf_token", form.querySelector("input[name=csrf_token]").value);
+    fd.append("q", item.querySelector("input[name=q]").value);
+    fd.append("limit", item.querySelector("input[name=limit]").value);
+    fd.append("exp_ids", ids.join(","));
+    fd.append("posting_id", form.querySelector("select[name=posting_id]").value);
+    btn.disabled = true; btn.textContent = "✦ 쓰는 중… (최대 1분)";
+    fetch(form.dataset.draft, {method: "POST", body: fd, credentials: "same-origin"})
+      .then(function (r) { return r.json(); }).then(function (d) {
+        if (d.error) { panel.innerHTML = '<p class="muted">' + esc(d.error) + '</p>'; return; }
+        putText(item, d.answer);
+        var notes = (d.notes || []).concat((d.missing || []).map(function (m) { return "더 채우면 좋은 것: " + m; }));
+        panel.innerHTML = '<p class="qa-type"><b>✦ AI 초안을 넣었어요.</b> 내 경험에 있는 내용인지 꼭 확인하고 고쳐 주세요.</p>' +
+          (notes.length ? '<ul class="qa-notes">' + notes.map(function (n) { return "<li>" + esc(n) + "</li>"; }).join("") + "</ul>" : "");
+      }).catch(function () { panel.innerHTML = '<p class="muted">AI 초안을 받지 못했어요. 잠시 뒤 다시 시도해 주세요.</p>'; })
+      .finally(function () { btn.disabled = false; btn.textContent = "✦ AI 초안"; });
+  }
   function wire(item) {
+    item.querySelector(".qa-suggest").addEventListener("click", function () { suggest(item); });
+    var d = item.querySelector(".qa-draft");
+    if (d) d.addEventListener("click", function () { draft(item, d); });
+    setPicked(item, picked(item), true);
     item.querySelector(".qa-answer").addEventListener("input", function () { count(item); });
     item.querySelector("input[name=limit]").addEventListener("input", function () { count(item); });
     item.querySelector(".qa-remove").addEventListener("click", function () {
@@ -88,6 +164,7 @@
   document.getElementById("addQa").addEventListener("click", function () {
     var tpl = list.querySelector(".qa-item").cloneNode(true);
     tpl.querySelectorAll("input, textarea").forEach(function (f) { f.value = ""; });
+    var panel = tpl.querySelector(".qa-panel"); panel.hidden = true; panel.innerHTML = "";
     list.appendChild(tpl); wire(tpl); tpl.querySelector("input[name=q]").focus();
   });
 })();

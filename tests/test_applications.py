@@ -40,7 +40,8 @@ def test_create_view_edit_and_filter(auth_client, user):
     auth_client.post(f"/applications/{rec.id}/edit", data={"company": "한빛무역", "status": "면접 진행", "q": ["새 문항"],
                                                            "limit": [""], "a": ["새 답변"]})
     db.session.refresh(rec)
-    assert rec.status == "면접 진행" and rec.qa == [{"q": "새 문항", "limit": "", "a": "새 답변"}]
+    assert rec.status == "면접 진행" and rec.qa == [{"q": "새 문항", "limit": "", "a": "새 답변", "exps": []}]
+    assert [q["q"] for q in rec.versions[0].qa] == ["지원 동기", "직무 역량"]  # 바뀌기 전 답변은 버전으로
 
 
 def test_new_from_posting_prefills(auth_client, user):
